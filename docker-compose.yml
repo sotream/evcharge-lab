@@ -1,0 +1,337 @@
+# evcharge-lab: full stack. `docker compose up` starts infra, all services and the simulator.
+# Host ports are in the 23000-29999 range (ADR 0001, "Ports"). Internally every service listens on :8080.
+name: evcharge
+
+x-node-env: &common-env
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  HTTP_PORT: "8080"
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  KAFKA_BROKERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+  REDIS_URL: redis://redis:6379
+  SHUTDOWN_GRACE_MS: "15000"
+  STATION_SECRET_SEED: ${STATION_SECRET_SEED:-dev-station-seed-change-me}
+
+x-service: &service
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    kafka-1: { condition: service_healthy }
+    kafka-2: { condition: service_healthy }
+    kafka-3: { condition: service_healthy }
+    topics-init: { condition: service_completed_successfully }
+
+services:
+  # ---------------------------------------------------------------- infra
+  # OLTP: sessions, billing, tariff, drivers. RPO 0 (synchronous_commit=on). ADR 0001.
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: evcharge
+      POSTGRES_PASSWORD: evcharge
+      POSTGRES_DB: evcharge
+    command: ["postgres", "-c", "max_connections=400", "-c", "shared_buffers=512MB", "-c", "synchronous_commit=on"]
+    ports: ["25432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evcharge -d evcharge"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # Telemetry: separate instance so its WAL/IO and relaxed durability never touch OLTP (ADR 0008).
+  postgres-telemetry:
+    image: timescale/timescaledb:2.24.0-pg18
+    environment:
+      POSTGRES_USER: evcharge
+      POSTGRES_PASSWORD: evcharge
+      POSTGRES_DB: telemetry
+    command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=512MB", "-c", "wal_compression=lz4", "-c", "max_wal_size=4GB", "-c", "checkpoint_timeout=15min"]
+    ports: ["25433:5432"]
+    volumes:
+      - pgtelemetry:/var/lib/postgresql/data
+      - ./infra/postgres/init-telemetry.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evcharge -d telemetry"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8.10.3-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports: ["26379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  kafka-1:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:19091
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,EXTERNAL://localhost:29091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: evchargeLabKRaftCluster01
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+    ports: ["29091:19091"]
+    volumes: ["kafka1:/var/lib/kafka/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 10s
+
+  kafka-2:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:19092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: evchargeLabKRaftCluster01
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+    ports: ["29092:19092"]
+    volumes: ["kafka2:/var/lib/kafka/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 10s
+
+  kafka-3:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:19093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092,EXTERNAL://localhost:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: evchargeLabKRaftCluster01
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+    ports: ["29093:19093"]
+    volumes: ["kafka3:/var/lib/kafka/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 10s
+
+  topics-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka-1: { condition: service_healthy }
+      kafka-2: { condition: service_healthy }
+      kafka-3: { condition: service_healthy }
+    entrypoint: ["/bin/bash", "/init/topics.sh"]
+    volumes: ["./infra/kafka/topics.sh:/init/topics.sh:ro"]
+    restart: "no"
+
+  # ---------------------------------------------------------------- observability
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    ports: ["26686:16686", "24318:4318"]
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=2d", "--web.enable-lifecycle"]
+    ports: ["29090:9090"]
+    volumes: ["./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports: ["23000:3000"]
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  # ---------------------------------------------------------------- station edge
+  station-lb:
+    image: haproxy:3.4.7-alpine
+    ports: ["28080:8080", "28099:8404"]
+    volumes: ["./infra/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
+    depends_on: [station-gateway-1, station-gateway-2]
+
+  station-gateway-1: &gateway
+    <<: *service
+    build: { context: ., dockerfile: services/station-gateway/Dockerfile }
+    image: evcharge/station-gateway:dev
+    environment:
+      <<: *common-env
+      SERVICE_NAME: station-gateway
+      GATEWAY_INSTANCE_ID: gw-1
+      SESSIONS_URL: http://sessions:8080
+    ports: ["28087:8080"]
+    stop_grace_period: 30s
+
+  station-gateway-2:
+    <<: *gateway
+    environment:
+      <<: *common-env
+      SERVICE_NAME: station-gateway
+      GATEWAY_INSTANCE_ID: gw-2
+      SESSIONS_URL: http://sessions:8080
+    ports: ["28088:8080"]
+
+  # ---------------------------------------------------------------- core services
+  sessions:
+    <<: *service
+    build: { context: ., dockerfile: services/sessions/Dockerfile }
+    image: evcharge/sessions:dev
+    environment:
+      <<: *common-env
+      SERVICE_NAME: sessions
+      DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/sessions
+      SMART_CHARGING_URL: http://smart-charging:8080
+      SEED_SITES: ${SIM_SITES:-20}
+      SEED_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
+      SEED_DC_SHARE: "0.2"
+    ports: ["28081:8080"]
+
+  smart-charging:
+    restart: unless-stopped
+    build: { context: ., dockerfile: services/smart-charging/Dockerfile }
+    image: evcharge/smart-charging:dev
+    environment:
+      SERVICE_NAME: smart-charging
+      SHUTDOWN_GRACE: 15s
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_PORT: "8080"
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    ports: ["28084:8080"]
+
+  tariff:
+    restart: unless-stopped
+    build: { context: ., dockerfile: services/tariff/Dockerfile }
+    image: evcharge/tariff:dev
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      SERVICE_NAME: tariff
+      SHUTDOWN_GRACE: 15s
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_PORT: "8080"
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/tariff
+    ports: ["28085:8080"]
+
+  billing:
+    <<: *service
+    build: { context: ., dockerfile: services/billing/Dockerfile }
+    image: evcharge/billing:dev
+    environment:
+      <<: *common-env
+      SERVICE_NAME: billing
+      DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/billing
+      TARIFF_URL: http://tariff:8080
+    ports: ["28083:8080"]
+
+  telemetry-ingest:
+    <<: *service
+    build: { context: ., dockerfile: services/telemetry-ingest/Dockerfile }
+    image: evcharge/telemetry-ingest:dev
+    environment:
+      SERVICE_NAME: telemetry-ingest
+      SHUTDOWN_GRACE: 15s
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HTTP_PORT: "8080"
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      KAFKA_BROKERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://evcharge:evcharge@postgres-telemetry:5432/telemetry
+    ports: ["28086:8080"]
+
+  driver-api:
+    <<: *service
+    build: { context: ., dockerfile: services/driver-api/Dockerfile }
+    image: evcharge/driver-api:dev
+    environment:
+      <<: *common-env
+      SERVICE_NAME: driver-api
+      DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/drivers
+      SESSIONS_URL: http://sessions:8080
+      BILLING_URL: http://billing:8080
+      TELEMETRY_URL: http://telemetry-ingest:8080
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-at-least-32-chars}
+    ports: ["28082:8080"]
+
+  # ---------------------------------------------------------------- traffic
+  simulator:
+    restart: unless-stopped
+    build: { context: ., dockerfile: simulator/Dockerfile }
+    image: evcharge/simulator:dev
+    depends_on: [station-lb, driver-api, sessions]
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CSMS_URL: ws://station-lb:8080/ocpp
+      DRIVER_API_URL: http://driver-api:8080
+      SIM_SITES: ${SIM_SITES:-20}
+      SIM_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
+      SIM_DC_SHARE: "0.2"
+      SIM_TIME_SCALE: ${SIM_TIME_SCALE:-1}
+      SIM_DRIVERS: ${SIM_DRIVERS:-50}
+      SIM_HTTP_PORT: "8080"
+      STATION_SECRET_SEED: ${STATION_SECRET_SEED:-dev-station-seed-change-me}
+    ports: ["28089:8080"]
+
+volumes:
+  pgdata: {}
+  pgtelemetry: {}
+  kafka1: {}
+  kafka2: {}
+  kafka3: {}

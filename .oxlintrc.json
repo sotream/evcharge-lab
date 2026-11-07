@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "import", "node", "promise", "vitest"],
+  "categories": { "correctness": "error", "suspicious": "warn", "perf": "warn" },
+  "rules": {
+    "no-console": "error",
+    "typescript/no-explicit-any": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "typescript/no-extraneous-class": "off",
+    "unicorn/no-array-sort": "off"
+  },
+  "overrides": [
+    { "files": ["scripts/**", "load/**", "drills/**", "**/*.mjs"], "rules": { "no-console": "off" } }
+  ],
+  "ignorePatterns": [".claude/**", ".worktrees/**", "**/dist/**", "**/node_modules/**", "**/coverage/**", "**/dist-check/**"]
+}

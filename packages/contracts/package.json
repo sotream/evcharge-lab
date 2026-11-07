@@ -1,0 +1,16 @@
+{
+  "name": "@evcharge/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node dist/gen-json-schema.js schemas",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run",
+    "test:int": "true"
+  },
+  "dependencies": { "zod": "^4.6.7" },
+  "devDependencies": { "vitest": "^5.1.0", "typescript": "^7.0.2", "@types/node": "^26.0.0" }
+}

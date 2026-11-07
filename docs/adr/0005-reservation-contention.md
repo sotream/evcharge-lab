@@ -1,0 +1,62 @@
+# 0005. Reservations under contention
+
+- Status: accepted
+- Date: 2026-11-08
+- Driven by ADR 0000: "zero double bookings of one connector; reservation TTL 15 min"; driver writes 50 RPS peak; sessions ≥ 200 commands/s per instance; sessions retained 10 years (~117 GB/year).
+
+## Context
+
+Popular connectors get several reservation attempts within milliseconds of each other. Exactly one
+may win. A reservation also has to be confirmed by the station (`ReserveNow`), it expires, and a
+driver who taps "reserve" twice, or whose client retries on a timeout, must not hold two
+reservations.
+
+## Decision
+
+- **The database enforces exclusivity.** `reservations` carries a generated `tstzrange(starts_at,
+  expires_at)` and an exclusion constraint:
+  `EXCLUDE USING gist (connector_pk WITH =, period WITH &&) WHERE (status IN ('Pending','Active'))`
+  (btree_gist). A concurrent loser gets `23P01` (exclusion_violation), which maps to HTTP 409
+  `connector_unavailable`. There is no application lock and no read-then-write race.
+- **One open reservation per driver.** A partial unique index on `(driver_id) WHERE status IN
+  ('Pending','Active')` enforces it.
+- **TTL.** Every reservation lasts 15 minutes (ADR 0000), so `expires_at = now() + 15 min`, and the request has no duration field.
+- **Retries are idempotent.** `POST /v1/reservations` requires `idempotency-key`. The same key
+  returns the original reservation.
+- **Station confirmation.** The row is inserted as `Pending` together with an outbox
+  `ReserveNow` command (`station.commands.v1`, expiry 30 s) in one transaction.
+  `station.command-completed` changes the status to `Active` on `Accepted`, or to `Rejected` on
+  any other outcome, which releases the range.
+  - If the station is offline, the outcome is `StationOffline`, the reservation becomes
+    `Rejected`, and the driver can see that.
+- **Expiry.** A sweeper runs every 5 s:
+  `UPDATE ... SET status='Expired' WHERE status IN ('Pending','Active') AND expires_at < now()
+  RETURNING ...`, using `FOR UPDATE SKIP LOCKED` batches so that several `sessions` replicas can
+  sweep safely. Each expired row emits `reservation.ended`.
+- **Use.** A `StartTransaction` that carries a `reservationId`, or that comes from the reserving
+  driver's idTag on that connector, marks the reservation `Used` in the same transaction that
+  creates the session.
+- A connector that is `Charging` or `Faulted` per its last StatusNotification is rejected up front
+  with 409, which is cheaper than a round trip to the station.
+
+## Rejected alternatives
+
+- **Redis `SET NX` lock per connector.** This is fast, but it is a second source of truth. It
+  needs fencing against lock expiry during a slow transaction, and it still needs the database
+  write. The exclusion constraint is atomic with the write itself.
+- **`SELECT ... FOR UPDATE` on the connector row, then insert.** This is correct but serializes
+  every reservation on a connector through a row lock, and it relies on every code path taking
+  the lock. A constraint cannot be forgotten.
+- **SERIALIZABLE isolation.** This is correct, but it produces retry storms under contention. The
+  constraint fails only the true losers.
+
+- **Sizing.** At 50 driver writes/s at peak, against a target of at least 200 commands/s per `sessions` instance, the GiST exclusion check is an index probe on one connector's handful of rows. Contention is per connector, so it does not grow with fleet size.
+- **Retention.** Reservations and sessions are kept for 10 years (ADR 0000) in monthly range partitions. The exclusion constraint is defined per partition on `starts_at`. A reservation never spans more than 15 minutes, so a range crossing a month boundary is checked against both partitions by a constraint trigger on the boundary rows.
+
+## Consequences
+
+- The load test hits one connector with N concurrent virtual users and must show exactly one 201
+  and N-1 409s, plus the p99 of that path. Results are in `docs/load-output/`.
+- The reservation lifecycle depends on command results arriving. If the gateway or broker is down,
+  reservations stay `Pending` until the 30 s command expiry produces `Expired` or
+  `StationOffline`, which rejects them.

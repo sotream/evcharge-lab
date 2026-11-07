@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: services
+    metrics_path: /metrics
+    static_configs:
+      - targets: [station-gateway-1:8080, station-gateway-2:8080, sessions:8080, billing:8080, driver-api:8080, smart-charging:8080, tariff:8080, telemetry-ingest:8080, simulator:8080]
+  - job_name: haproxy
+    static_configs: [{ targets: [station-lb:8404] }]

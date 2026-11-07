@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/dist-check
+**/coverage
+.git
+.worktrees
+.claude
+docs/load-output
+docs/drill-output

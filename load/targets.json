@@ -1,0 +1,23 @@
+{
+  "$comment": "Pass/fail thresholds for load/ and drills/, transcribed from docs/adr/0000-requirements-and-capacity.md (Lab targets + SLOs). Charts plot these as 'target' next to measured values.",
+  "source": "docs/adr/0000-requirements-and-capacity.md",
+  "perInstance": {
+    "station-gateway": { "connections": 10000, "msgPerSec": 2000, "callResultP99Ms": 500 },
+    "telemetry-ingest": { "rowsPerSec": 2500, "durableP99Ms": 5000, "visibleP99Ms": 10000, "maxLossRatio": 0.0001 },
+    "sessions": { "commandsPerSec": 200 },
+    "smart-charging": { "allocationsPerSec": 1000, "p99Ms": 20 },
+    "tariff": { "calculationsPerSec": 2000, "p99Ms": 20 },
+    "driver-api": { "readRps": 1000, "readP99Ms": 300, "writeP99Ms": 800 }
+  },
+  "slo": {
+    "remoteStartDeliveredP99Ms": 2000,
+    "remoteStartConfirmedP99Ms": 5000,
+    "reallocationAfterStartStopP99Ms": 5000,
+    "invoiceAfterSessionEndP99Ms": 300000,
+    "gatewayInstanceLossRoutableWithinMs": 60000,
+    "doubleBookings": 0,
+    "lostInvoices": 0,
+    "doubleCharges": 0,
+    "siteCapExceededSamples": 0
+  }
+}
