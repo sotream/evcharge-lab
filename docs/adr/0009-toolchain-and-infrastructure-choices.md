@@ -51,10 +51,10 @@ versions current on 2026-11-08.
 - **Images.** Node images use a multi-stage `node:26-alpine` build: `pnpm deploy --prod` of
   one package, then a slim runtime that runs as a non-root user. Go images build in
   `golang:1.27-alpine` with `CGO_ENABLED=0` and run on `gcr.io/distroless/static-debian12:nonroot`.
-- **Checks** run locally only, through `make check`: install, contracts generation and drift check,
+- **Checks** (superseded in part by ADR 0020: the same `make check` now also runs in GitHub Actions) ran locally only, through `make check`: install, contracts generation and drift check,
   topic sync, lint, typecheck, build, unit tests, then infra up, integration tests against the real
   Postgres (OLTP + telemetry), Redis and the 3-broker Kafka cluster, and `go vet`, golangci-lint and `go test -race` for every `go.work`
-  module. There is no CI.
+  module. At the time of writing there was no CI.
 
 ## Rejected alternatives
 

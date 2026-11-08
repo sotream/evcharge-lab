@@ -1,0 +1,153 @@
+version: 2
+# Minor and patch updates are grouped per ecosystem and get auto-merge (dependabot-auto-merge.yml) once the
+# required check is green. Majors are separate PRs and stay manual; so do GitHub Actions bumps.
+updates:
+  # One pnpm workspace: the lockfile and all packages/*, services/*, simulator manifests are updated from the root.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Types follow the Node version in ADR 0009, not the latest major.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+  # One entry per module in go.work.
+  - package-ecosystem: gomod
+    directory: /packages/contracts-go
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /packages/platform-go
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /scripts/backfill-telemetry
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /services/smart-charging
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /services/tariff
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: gomod
+    directory: /services/telemetry-ingest
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  # One entry per Dockerfile. Node moves by hand (ADR 0009); the Go toolchain image follows go.work.
+  - package-ecosystem: docker
+    directory: /services/billing
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /services/driver-api
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /services/sessions
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /services/station-gateway
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /simulator
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: docker
+    directory: /services/smart-charging
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /services/tariff
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /services/telemetry-ingest
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  # Images in docker-compose.yml.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # A database, cache or broker major is a deliberate move (and a re-measurement), not a bot PR.
+      - dependency-name: postgres
+        update-types: ['version-update:semver-major']
+      - dependency-name: redis
+        update-types: ['version-update:semver-major']
+      - dependency-name: apache/kafka
+        update-types: ['version-update:semver-major']
+      - dependency-name: timescale/timescaledb
+        update-types: ['version-update:semver-major']

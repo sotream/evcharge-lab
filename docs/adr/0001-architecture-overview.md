@@ -122,7 +122,7 @@ detached to cold storage without a rewrite.
 
 ### Delivery order
 
-1. Contracts, scaffold, compose, `make check` (this stage).
+1. Contracts, scaffold, compose, `make check` (this stage; checks ran on the developer machine only, superseded in part by ADR 0020, which runs them in CI).
 2. Wave 1, in parallel worktrees: station-gateway + simulator; sessions + reservations;
    smart-charging; tariff; billing + telemetry-ingest.
 3. Wave 2: driver-api + auth, plus reviewers of wave 1 against the contracts and ADRs.

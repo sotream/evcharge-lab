@@ -1,4 +1,4 @@
-# Every check runs locally (no CI). `make check` must be green before each stage commit.
+# `make check` is the single definition of green: CI runs exactly this (ADR 0020) and it must pass before each commit.
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 GO_MODULES := $(shell go work edit -json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).Use.map(u=>u.DiskPath).join(" ")))')
