@@ -1,0 +1,14 @@
+ops 1395, reserves 1277 (acknowledged 118, rejected 1156, indeterminate 3, of which found in DB 0), accepted cancels 114, DB rows 196
+informational overlaps (not violations): 1248
+RESULT: FAIL, 9 violation(s)
+  VIOLATION acknowledged reservation lost [785b8ecf-b2ef-406d-9dcb-30ed8c724ce8] reservationId 439 on st-0009-003#2 missing from DB
+  VIOLATION acknowledged reservation lost [2abf4826-b149-47d1-80c5-8e31dd85f326] reservationId 443 on st-0009-001#2 found on another connector
+  VIOLATION acknowledged reservation lost [0c927359-0703-4851-a138-aaa6680fa2c5] reservationId 444 on st-0009-004#2 missing from DB
+  VIOLATION acknowledged reservation lost [f21c7fe7-34fe-4852-8578-8585e9386518] reservationId 447 on st-0009-004#1 missing from DB
+  VIOLATION acknowledged reservation lost [c0e6bd0b-b5d0-45ea-9196-5feadc58ddc7] reservationId 459 on st-0009-002#1 missing from DB
+  VIOLATION acknowledged reservation lost [de4b1dc6-5129-4310-ac1b-8500903d4898] reservationId 463 on st-0009-004#2 missing from DB
+  VIOLATION acknowledged overlap [dbc461b3-ea28-48c4-9a3c-432f132c6a02, 1aeafdb8-b0cb-45c2-a215-e788d0919c4f] st-0009-002#2: [1794170434680,1794170438372) vs [1794170437216,1794170438158)
+  VIOLATION acknowledged overlap [dbc461b3-ea28-48c4-9a3c-432f132c6a02, 123f9f30-f48f-4a9e-aeeb-d610c44ff2ab] st-0009-002#2: [1794170434680,1794170438372) vs [1794170437359,1794170438372)
+  VIOLATION acknowledged overlap [1aeafdb8-b0cb-45c2-a215-e788d0919c4f, 123f9f30-f48f-4a9e-aeeb-d610c44ff2ab] st-0009-002#2: [1794170437216,1794170438158) vs [1794170437359,1794170438372)
+
+This is not a full linearizability check: it proves non-overlap of acknowledged intervals and durability of acknowledged reservations only.

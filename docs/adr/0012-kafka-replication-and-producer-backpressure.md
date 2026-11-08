@@ -88,6 +88,26 @@ Rows accumulate and drain after recovery.
   - Not checked: that CALLERRORs start, that no process crashes (only the gateway's `/health/live` is polled, once
     during the outage), and that the backlog drains (it is covered only indirectly through the missing-readings check).
 
+### Consumer group rebalance and idempotent redelivery (`drills/consumer-rebalance.sh`)
+
+The telemetry-ingest group (`telemetry-ingest.meter-values`, 24 partitions) runs as two instances: the compose service and a second container started from the same image. The simulator's meter interval is set to 2 s (default 30 s) to put volume through the topic (median 19 and 20 MeterValues calls per second at the gateway in the two runs' `before` phase, from `timeline.jsonl`; this is a low rate, so the lag peak below is small). One instance is killed with SIGKILL and started again. Who owns which partition is read from the group coordinator (`kafka-consumer-groups --describe --members --verbose`, once per poll) and not from the instances' own lag series, which trail the assignment; three earlier runs used the lag series and were discarded. Raw output: `docs/drill-output/consumer-rebalance-20261108T214311Z` and `...T214804Z` (two runs, machine in `env.json`); the times below are in `timings.json` and are good to ±1 s because the kill instant comes from `events.log`.
+
+| What | Run 1 | Run 2 |
+|---|---|---|
+| Kill to the coordinator dropping the dead member | 45.1 s | 45.3 s |
+| Kill to the survivor owning all 24 partitions | 46.2 s | 46.4 s |
+| Restart to two members owning all 24 partitions | 0.4 s | 0.2 s |
+| Group lag peak (records) | 371 at +44 s | 409 at +46.7 s |
+| Kill to group lag below 100 records | 49 s | 51.7 s |
+| Probe readings generated / missing in Timescale | 3,640 / 0 | 6,580 / 0 |
+| Duplicate rows (station, connector, time) | 0 | 0 |
+
+- **The rebalance is dominated by detection, not by the reassignment.** A killed member does not leave the group, so its 12 partitions are idle until the coordinator times its session out (45.1 and 45.3 s here, which is consistent with a 45 s session timeout; the repository sets no timeout, so this is the client default and was not read from configuration). The reassignment after that took about 1.1 s. During those 45 s about 400 records piled up (the lag peak) and were cleared 2.8 and 5.3 s after the survivor took over (46.2 s to 49 s, 46.4 s to 51.7 s). Run 2 already had 426 records of lag before the kill, during its initial three-member rebalance (a member left over from run 1 was still listed), so its peak is not purely kill-induced. Nothing was lost (0 missing probe readings).
+- **Adding a member back is fast** (0.2 to 0.4 s to a 2-member group owning all partitions in the coordinator's view). The checks in the drill allow 60 s for both rebalances; both passed.
+- **Redelivery after a kill did not happen in these runs.** Offsets are committed after the flush transaction commits (with `synchronous_commit=off`, so not crash-durable), so the dead instance had nothing uncommitted: the instances' `telemetry_dedup_dropped_total` stayed 0 in both runs (`dedupSuppressedRedeliveries` in `summary.json`). A first version of the drill expected at least one suppressed duplicate after the kill and failed on that wrong expectation; the run was discarded.
+- **Forced redelivery proves the idempotency.** The drill stops both members gracefully, waits until the group is Empty (a killed member keeps the group Stable until its session times out, and the offset reset is refused), moves the committed offsets back by 200 records per partition (`reset-offsets.txt`), and starts both instances. In both runs 4,800 records (24 x 200) were read again and every one was suppressed by the unique index `(station_id, connector_id, time)` (`telemetry_dedup_dropped_total` summed over both instances: 4,800), with 0 duplicate rows afterwards. The rows inserted in the same window (836 and 841) were new readings.
+- Two runs show 45.1 and 45.3 s; that is not enough to state a spread. The survivor's own lag series reached 23 partitions and never 24 (`survivorReports24PartitionsS: null` in `summary.json`) while the coordinator already listed 24, which is why the coordinator is the reference.
+
 ## Rejected alternatives
 
 - **`acks=1`.** It has lower latency, but a leader crash before replication loses acknowledged

@@ -1,0 +1,25 @@
+2026-11-08T21:52:34Z source row counts before the backup: {"sessions.sessions":3104,"sessions.reservations":1882,"sessions.processed_events":41795,"billing.invoices":2876,"billing.invoice_lines":11524,"billing.payments":2095,"billing.psp_captures":2095,"billing.processed_events":5980}
+2026-11-08T21:52:34Z PHASE during
+2026-11-08T21:52:34Z RUN pg_basebackup -h postgres -U replicator -D /backup/base -X stream -c fast  (physical, all databases)
+2026-11-08T21:52:35Z backup done in 1071 ms, 163044 KB; START WAL LOCATION: 0/1B0000D8 (file 00000001000000000000001B);CHECKPOINT LOCATION: 0/1B000130;BACKUP METHOD: streamed;
+2026-11-08T21:52:36Z load continues for 60s after the backup
+2026-11-08T21:53:36Z disaster moment T_D=1794174816421; newest reservation on the source 2026-11-08T21:53:22.925Z
+2026-11-08T21:53:36Z PHASE after
+2026-11-08T21:53:36Z RUN restore copy: backup volume -> fresh volume
+2026-11-08T21:53:37Z RUN start Postgres on the restored data directory (port 25435)
+2026-11-08T21:53:38Z OK restored instance accepts queries after 1 s
+2026-11-08T21:53:38Z restore: copy 734 ms, start to first query 1361 ms, total 2095 ms
+2026-11-08T21:53:39Z restored row counts: {"sessions.sessions":3104,"sessions.reservations":1882,"sessions.processed_events":41797,"billing.invoices":2877,"billing.invoice_lines":11528,"billing.payments":2096,"billing.psp_captures":2096,"billing.processed_events":5981}
+2026-11-08T21:53:39Z integrity: reservation overlaps=0 invoices total<>lines=0 sessions with 2 invoices=0 invoices-registry=0 payments<>invoice=0 payments without invoice=0 payments-captures sum gap=0 sessions stopped<started=0
+2026-11-08T21:53:40Z CHECK restore_instance_ready measured=1 eq 1 pass=true
+2026-11-08T21:53:40Z CHECK restored_counts_within_backup_window measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK reservation_overlaps_in_restored_db measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK invoices_total_differs_from_lines measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK sessions_with_more_than_one_invoice measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK invoices_minus_registry_rows measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK payments_amount_differs_from_invoice measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK payments_without_invoice measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK payments_minus_psp_captures_sum measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z CHECK sessions_stopped_before_started measured=0 eq 0 pass=true
+2026-11-08T21:53:40Z backup time 1.1 s, restore time 2.1 s, data age 52.7 s (recorded in summary.json, not pass/fail)
+2026-11-08T21:53:40Z RESULT pass=true -> docs/drill-output/backup-restore-20261108T215232Z/result.json

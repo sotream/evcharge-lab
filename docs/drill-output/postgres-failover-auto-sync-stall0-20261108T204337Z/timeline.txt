@@ -1,0 +1,27 @@
+Failover timeline (seconds relative to the kill; 2 s buckets)
+mode=auto  synchronous_standby_names='FIRST 1 (replica_1)'  stall=0s
+
+   t(s)  db-acks  drv ok/rej/err  db-acks bar                                 events
+    -10      178     9/ 22/  0  #######################################   
+     -8      180     9/ 16/  0  #######################################   
+     -6      177    10/ 16/  0  ######################################    
+     -4      179     8/ 17/  0  #######################################   
+     -2      164    14/ 14/  0  ####################################      
+      0      148    11/ 11/ 12  ################################          PRIMARY KILLED (docker kill); promote started; replica promoted (pg_promote returned); alias postgres now points at the new primary
+      2      183    15/ 15/  0  ########################################  
+      4      183    10/ 21/  0  ########################################  
+      6      180    12/ 15/  0  #######################################   
+      8      182    11/ 15/  0  ########################################  
+     10      182    14/ 18/  0  ########################################  
+     12      181    10/ 19/  0  #######################################   
+     14      183    13/ 16/  0  ########################################  
+     16      182    10/ 20/  0  ########################################  
+     18      181    12/ 15/  0  #######################################   
+     20      184    14/ 14/  0  ########################################  
+
+Longest gap between two acknowledged DB commits: 0.5 s
+RTO, first acknowledged DB write that started after the kill: 0.4 s
+RTO, first accepted driver reservation invoked after the kill: 1.1 s
+Acknowledged probe commits: 8244, lost on the new primary: 0
+Drivers during the window (11.1 s): 65 ok, 87 rejected, 12 errors/timeouts
+Stations and services (counter growth): OCPP CALLERROR sent 1, sessions HTTP 5xx 7, driver-api HTTP 5xx 15
