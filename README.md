@@ -37,7 +37,7 @@
 > **Status:** a learning and design lab, not a production system. Its known gaps are listed in [Known limits](#known-limits-and-production-gaps).
 
 <!-- stats:start -->
-| 7 services | 21 ADRs | 12 drill scripts | 18 of 19 drills pass on the latest run | 23 of 23 findings fixed |
+| 7 services | 21 ADRs | 12 drill scripts | 19 of 20 drills pass on the latest run | 23 of 23 findings fixed |
 |:---:|:---:|:---:|:---:|:---:|
 | [NestJS and Go, plus a station simulator](#the-system-design-question-each-service-answers) | [one decision per file](docs/adr/README.md) | [failure drills](#drills) | [12 failed runs kept as evidence](docs/drills.md) | [found by drills, k6 and reviews](#what-the-drills-and-reviews-caught) |
 <!-- stats:end -->
@@ -196,6 +196,7 @@ The failure drills in [`drills/`](drills/) break one component while the simulat
 <!-- drills:start -->
 | Drill | What it breaks | Runs passed | Latest run | Timeline |
 |---|---|:---:|---|---|
+| `backup-restore` | physical backup of the OLTP Postgres (all databases, so `sessions` and `billing`) with pg_basebackup, restored into a SEPARATE container, with integrity checks and a measured data age | 1 of 1 | ✅ passed | [20261108T215232Z](docs/drills.md#backup-restore-20261108t215232z) |
 | `consumer-rebalance` | consumer-group rebalance under load, and idempotency on redelivery | 2 of 2 | ✅ passed | [20261108T214804Z](docs/drills.md#consumer-rebalance-20261108t214804z) |
 | `gateway-instance-loss` | kill one station-gateway instance (SIGKILL, no graceful close) | 1 of 2 | ✅ passed | [20261108T122353Z](docs/drills.md#gateway-instance-loss-20261108t122353z) |
 | `kafka-broker-loss-1` | one broker down | 1 of 2 | ✅ passed | [20261108T140530Z](docs/drills.md#kafka-broker-loss-1-20261108t140530z) |

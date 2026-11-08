@@ -82,14 +82,16 @@ export function drills() {
     if (!d.isDirectory()) continue;
     const dir = path.join(DRILL_DIR, d.name);
     const tl = path.join(dir, 'timeline.jsonl');
-    if (!exists(tl)) { warn(`docs/drill-output/${d.name} has no timeline.jsonl; the directory is skipped`); continue; }
+    const hasResult = exists(path.join(dir, 'result.json'));
+    // A drill without a timeline (backup/restore) still has a verdict; it gets no chart.
+    if (!exists(tl) && !hasResult) { warn(`docs/drill-output/${d.name} has neither timeline.jsonl nor result.json; the directory is skipped`); continue; }
     const rows = [];
     let bad = 0;
-    for (const l of fs.readFileSync(tl, 'utf8').split('\n').filter(Boolean)) {
+    for (const l of exists(tl) ? fs.readFileSync(tl, 'utf8').split('\n').filter(Boolean) : []) {
       try { const r = JSON.parse(l); if (r && typeof r === 'object' && typeof r.s === 'number') rows.push(r); else bad++; } catch { bad++; }
     }
     if (bad) warn(`docs/drill-output/${d.name}/timeline.jsonl: ${bad} unreadable line(s) skipped`);
-    if (rows.length < 2) { warn(`docs/drill-output/${d.name}/timeline.jsonl has fewer than two usable samples; the directory is skipped`); continue; }
+    if (rows.length < 2 && !hasResult) { warn(`docs/drill-output/${d.name}/timeline.jsonl has fewer than two usable samples; the directory is skipped`); continue; }
     const opt = (f) => (exists(path.join(dir, f)) ? readJsonSafe(path.join(dir, f)) : null);
     let result = opt('result.json');
     if (result && !Array.isArray(result.checks)) { warn(`docs/drill-output/${d.name}/result.json has no checks array; the file is skipped`); result = null; }
