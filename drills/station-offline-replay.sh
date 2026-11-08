@@ -38,7 +38,7 @@ sleep 5
 check "connected_dropped_during_offline" "$(( $(curl -s 127.0.0.1:28089/status | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.started-j.connected)})') ))" ge "$OFFN"
 sleep $(( OFFLINE_MIN * 60 / SCALE + 5 ))
 phase after
-T=$(wait_until 600 "replay queues drained" bash -c "[ \"\$(curl -s 127.0.0.1:28089/status | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>console.log(JSON.parse(s).replayQueueDepth))')\" = 0 ]") || T=null
+T=$(wait_until "${DRAIN_WAIT_S:-3600}" "replay queues drained" bash -c "[ \"\$(curl -s 127.0.0.1:28089/status | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>console.log(JSON.parse(s).replayQueueDepth))')\" = 0 ]") || T=null
 check "replay_drained_within_s" "$T" le 600
 check "queue_dropped_total" "$(prom 'sum(sim_queue_dropped_total)')" eq 0
 sleep "${AFTER_S:-60}"

@@ -195,3 +195,27 @@ groups:
           summary: "PSP idempotency key mismatch, money state uncertain (step {{ $labels.step }})"
           description: "PSP idempotency key mismatch, money state uncertain (step {{ $labels.step }})"
           runbook: "docs/runbook.md#billing-saga-parked"
+  # ADR 0015: sessions read replica. The staleness bound of stale-tolerant reads is this lag plus network time; the
+  # read-your-writes path is not affected by it (it falls back to the primary after 200 ms).
+  - name: sessions-read-replica
+    rules:
+      - alert: SessionsReplicaLagHigh
+        expr: |
+          max(pg_replication_lag_seconds{db="oltp-replica"}) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sessions read replica is more than 5 s behind the primary"
+          description: "Replica replay lag has been above 5 s for 2 minutes; the site map can be that stale and read-your-writes reads fall back to the primary."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: SessionsReplicaLagCritical
+        expr: |
+          max(pg_replication_lag_seconds{db="oltp-replica"}) > 30
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sessions read replica is more than 30 s behind the primary"
+          description: "Replica replay lag has been above 30 s for 1 minute; stale-tolerant reads exceed the documented bound and most read-your-writes reads hit the primary."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"

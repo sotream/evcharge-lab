@@ -1,5 +1,6 @@
 import type { api } from '@evcharge/contracts';
 import type { Pool } from '@evcharge/platform';
+import type { ReadRouter } from '../read-router';
 import type { z } from 'zod';
 
 export type ListSitesRes = z.infer<typeof api.SessionsPublic.listSitesRes>;
@@ -18,12 +19,17 @@ export function boundingBox(lat: number, lng: number, radiusKm: number): { minLa
 }
 
 export class CatalogService {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly router: ReadRouter) {}
 
-  /** GET /v1/sites: sites within radiusKm (nearest first) with stations, connectors, status and online flag. */
-  async listSites(lat: number, lng: number, radiusKm: number, limit = DEFAULT_SITES): Promise<ListSitesRes> {
+  /** GET /v1/sites: stale-tolerant (ADR 0015), so it is served by the replica when there is one. */
+  listSites(lat: number, lng: number, radiusKm: number, limit = DEFAULT_SITES): Promise<ListSitesRes> {
+    return this.router.read((pool) => this.querySites(pool, lat, lng, radiusKm, limit));
+  }
+
+  /** Sites within radiusKm (nearest first) with stations, connectors, status and online flag. */
+  private async querySites(pool: Pool, lat: number, lng: number, radiusKm: number, limit: number): Promise<ListSitesRes> {
     const b = boundingBox(lat, lng, radiusKm);
-    const { rows: sites } = await this.pool.query<{ site_id: string; name: string; lat: number; lng: number; cap_w: number }>(
+    const { rows: sites } = await pool.query<{ site_id: string; name: string; lat: number; lng: number; cap_w: number }>(
       `SELECT site_id, name, lat, lng, cap_w FROM (
          SELECT site_id, name, lat, lng, cap_w,
                 6371.0088 * 2 * asin(sqrt(power(sin(radians(lat - $1) / 2), 2) + cos(radians($1)) * cos(radians(lat)) * power(sin(radians(lng - $2) / 2), 2))) AS km
@@ -34,7 +40,7 @@ export class CatalogService {
     );
     if (sites.length === 0) return { sites: [] };
     const ids = sites.map((s) => s.site_id);
-    const { rows: conns } = await this.pool.query<{ station_id: string; site_id: string; online: boolean; lat: number; lng: number; connector_id: number | null; status: string | null; max_power_w: number | null; tariff_id: string | null }>(
+    const { rows: conns } = await pool.query<{ station_id: string; site_id: string; online: boolean; lat: number; lng: number; connector_id: number | null; status: string | null; max_power_w: number | null; tariff_id: string | null }>(
       `SELECT st.station_id, st.site_id, st.online, st.lat, st.lng, c.connector_id, c.status, c.max_power_w, c.tariff_id
          FROM stations st LEFT JOIN connectors c ON c.station_id = st.station_id
         WHERE st.site_id = ANY($1::text[]) AND st.enabled

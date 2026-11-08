@@ -40,6 +40,7 @@ import { DriverGuard } from './http/driver.guard';
 import { InternalController } from './http/internal.controller';
 import { ProblemFilter } from './http/problem';
 import { OcppService } from './ocpp/ocpp.service';
+import { ReadRouter, ReplicaMonitor } from './read-router';
 import { SiteSignal } from './site-signal';
 import { APP_CONFIG, LOGGER } from './tokens';
 import { ensurePartitions, Maintenance } from './workers/maintenance';
@@ -148,8 +149,14 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
 
   const signal = new SiteSignal();
   const ocpp = new OcppService(pool, topics, signal, logger, config.ACCEPT_UNKNOWN_IDTAGS);
-  const drivers = new DriverService(pool, topics);
-  const catalog = new CatalogService(pool);
+  // Optional hot standby (ADR 0015); without it the router sends every read to the primary.
+  const replicaPool = config.REPLICA_DATABASE_URL
+    ? createPgPool(config.REPLICA_DATABASE_URL, { max: config.REPLICA_PG_POOL_MAX, applicationName: `${config.SERVICE_NAME}-replica`, logger })
+    : undefined;
+  const router = new ReadRouter(pool, replicaPool, { waitMs: config.REPLICA_RYW_TIMEOUT_MS, pollMs: config.REPLICA_RYW_POLL_MS, logger });
+  const replicaMonitor = replicaPool ? new ReplicaMonitor(pool, replicaPool, logger) : undefined;
+  const drivers = new DriverService(pool, topics, router);
+  const catalog = new CatalogService(router);
   const allocation = new AllocationService(allocationPool, redis, allocator, topics, { periodS: config.ALLOCATION_PERIOD_S, tickMs: config.ALLOCATION_TICK_MS, concurrency: config.ALLOCATION_CONCURRENCY }, logger, signal);
   const handlers = new StationEventHandlers(pool, topics, logger, signal);
   const maintenance = new Maintenance(pool, topics, config.SWEEPER_INTERVAL_MS, logger);
@@ -170,10 +177,13 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
     onShutdown: [
       { name: 'pg', run: () => pool.end() },
       { name: 'pg-allocation', run: () => allocationPool.end() },
+      ...(replicaPool ? [{ name: 'pg-replica', run: () => replicaPool.end() }] : []),
+      { name: 'replica-monitor', run: () => replicaMonitor?.stop() },
       { name: 'redis', run: () => closeRedis(redis) },
       { name: 'kafka-producer', run: () => producer.close() },
     ],
   });
+  replicaMonitor?.start();
   if (workers) {
     const consumers: { name: string; consumer: KafkaConsumer }[] = [
       {

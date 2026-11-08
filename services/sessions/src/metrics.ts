@@ -26,5 +26,11 @@ export const m = {
   capViolationsRejected: counter({ name: 'sessions_allocation_cap_violations_rejected_total', help: 'Allocator responses rejected for exceeding the site cap' }),
   allocationBacklog: gauge({ name: 'sessions_allocation_backlog_seconds', help: 'Age of the oldest site whose allocation round is due and not leased' }),
   increasesDeferred: counter({ name: 'sessions_allocation_increases_deferred_total', help: 'Limit increases withheld until decreases are confirmed' }),
+  /** ADR 0015: where driver-facing reads were served. */
+  reads: counter({ name: 'sessions_reads_total', help: 'Driver-facing reads by target database', labelNames: ['target'] as const }),
+  /** ADR 0015: read-your-writes waits; fallback_primary means the replica did not reach min-lsn within the timeout. */
+  rywWaits: counter({ name: 'sessions_ryw_waits_total', help: 'Read-your-writes waits by outcome', labelNames: ['outcome'] as const }),
+  replicaLagSeconds: gauge({ name: 'sessions_replica_lag_seconds', help: 'Replica replay lag in seconds as sampled by sessions (0 when fully replayed)' }),
+  replicaLagBytes: gauge({ name: 'sessions_replica_lag_bytes', help: 'Primary pg_current_wal_lsn() minus the replica replay_lsn from pg_stat_replication' }),
   sweeperExpired: counter({ name: 'sessions_reservations_expired_total', help: 'Reservations expired by the sweeper' }),
 };

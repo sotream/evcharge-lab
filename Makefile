@@ -5,6 +5,7 @@ GO_MODULES := $(shell go work edit -json | node -e 'let s="";process.stdin.on("d
 
 # Integration tests talk to the compose infra on host ports (ADR 0001).
 export TEST_PG_URL ?= postgres://evcharge:evcharge@localhost:25432
+export TEST_PG_REPLICA_URL ?= postgres://evcharge:evcharge@localhost:25434
 export TEST_PG_TELEMETRY_URL ?= postgres://evcharge:evcharge@localhost:25433/telemetry
 export TEST_REDIS_URL ?= redis://localhost:26379
 export TEST_KAFKA_BROKERS ?= localhost:29091,localhost:29092,localhost:29093
@@ -44,7 +45,7 @@ APP_SERVICES := simulator station-lb station-gateway-1 station-gateway-2 session
 
 infra-up:
 	@docker compose stop $(APP_SERVICES) >/dev/null 2>&1 || true
-	docker compose up -d --wait postgres postgres-telemetry redis kafka-1 kafka-2 kafka-3
+	docker compose up -d --wait postgres postgres-replica postgres-telemetry redis kafka-1 kafka-2 kafka-3
 	docker compose run --rm topics-init >/dev/null
 
 infra-down:

@@ -1,0 +1,10 @@
+{
+  "replica_lag_s_exporter": "max(pg_replication_lag_seconds{db=\"oltp-replica\"})",
+  "replica_lag_s_sessions": "max(sessions_replica_lag_seconds)",
+  "replica_lag_bytes": "max(sessions_replica_lag_bytes)",
+  "reads_replica_per_s": "sum(rate(sessions_reads_total{target=\"replica\"}[10s]))",
+  "reads_primary_per_s": "sum(rate(sessions_reads_total{target=\"primary\"}[10s]))",
+  "ryw_caught_up_per_s": "sum(rate(sessions_ryw_waits_total{outcome=\"replica_caught_up\"}[10s]))",
+  "ryw_fallback_per_s": "sum(rate(sessions_ryw_waits_total{outcome=\"fallback_primary\"}[10s]))",
+  "driver_api_read_p99_s": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service=\"driver-api\",method=\"GET\",route!~\"/(health.*|ready.*|live.*|metrics)\"}[15s])))"
+}

@@ -13,6 +13,7 @@ OUT="docs/drill-output/${DRILL}-${STAMP}"
 mkdir -p "$OUT"
 PHASE_FILE="$OUT/.phase"
 echo before > "$PHASE_FILE"
+"$ROOT/drills/lib/env.sh" drill "$DRILL" > "$OUT/env.json"
 SAMPLER_PID=""
 CHECKS=()
 
@@ -37,8 +38,8 @@ check() { # name measured op threshold   (op: le, ge, eq)
   local name="$1" v="$2" op="$3" thr="$4" ok
   # Anything that is not a plain number (empty output, curl's 000, a stray log line) is recorded as null.
   [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$ ]] || v=null
-  [ "$v" != null ] && v=$(node -e 'console.log(Number(process.argv[1]))' "$v")
-  ok=$(node -e "const v=Number(process.argv[1]),t=Number(process.argv[3]);const o=process.argv[2];console.log(Number.isFinite(v)&&(o==='le'?v<=t:o==='ge'?v>=t:v===t))" "$v" "$op" "$thr")
+  [ "$v" != null ] && v=$(node -e 'console.log(Number(process.argv[1]))' -- "$v")
+  ok=$(node -e "const v=Number(process.argv[1]),t=Number(process.argv[3]);const o=process.argv[2];console.log(Number.isFinite(v)&&(o==='le'?v<=t:o==='ge'?v>=t:v===t))" -- "$v" "$op" "$thr")
   CHECKS+=("{\"check\":\"$name\",\"measured\":$( [ "$v" = null ] && echo null || echo "$v"),\"op\":\"$op\",\"threshold\":$thr,\"pass\":$ok}")
   log "CHECK $name measured=$v $op $thr pass=$ok"
 }

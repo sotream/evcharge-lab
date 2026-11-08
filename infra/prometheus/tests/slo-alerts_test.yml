@@ -188,6 +188,55 @@ tests:
               runbook: "docs/runbook.md#signals-worth-alerting-on"
               summary: "Telemetry durable lag p99 above the 5 s objective"
 
+  # ADR 0015: replica lag of 8 s for 10 minutes warns but is not critical; 40 s is both.
+  - name: replica lag warning only
+    interval: 1m
+    input_series:
+      - series: 'pg_replication_lag_seconds{db="oltp-replica"}'
+        values: '0x2 8x20'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: SessionsReplicaLagHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: SessionsReplicaLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              description: "Replica replay lag has been above 5 s for 2 minutes; the site map can be that stale and read-your-writes reads fall back to the primary."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "Sessions read replica is more than 5 s behind the primary"
+      - eval_time: 10m
+        alertname: SessionsReplicaLagCritical
+        exp_alerts: []
+
+  - name: replica lag critical
+    interval: 1m
+    input_series:
+      - series: 'pg_replication_lag_seconds{db="oltp-replica"}'
+        values: '0x2 40x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: SessionsReplicaLagCritical
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              description: "Replica replay lag has been above 30 s for 1 minute; stale-tolerant reads exceed the documented bound and most read-your-writes reads hit the primary."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "Sessions read replica is more than 30 s behind the primary"
+
+  - name: replica lag under 5 s does not fire
+    interval: 1m
+    input_series:
+      - series: 'pg_replication_lag_seconds{db="oltp-replica"}'
+        values: '3x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: SessionsReplicaLagHigh
+        exp_alerts: []
+
   - name: telemetry ingest paused fires
     interval: 1m
     input_series:

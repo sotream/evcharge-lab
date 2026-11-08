@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { hashRequest, type Pool, type PoolClient, type StoredResponse, withIdempotency, withTx } from '@evcharge/platform';
 import { ProblemError, notFound } from '../http/problem';
 import { m } from '../metrics';
+import type { ReadRouter } from '../read-router';
 import { emitSessionEvent, enqueueCommand, type ReservationDto, type SessionDto, type TopicNames } from '../outbox-events';
 
 /** ADR 0000: reservation TTL is fixed at 15 minutes. */
@@ -93,7 +94,21 @@ export class DriverService {
   constructor(
     private readonly pool: Pool,
     private readonly topics: TopicNames,
+    private readonly router: ReadRouter,
   ) {}
+
+  /** LSN after a committed write: pg_current_wal_lsn() is at or past the commit record (ADR 0015). Callers send it as x-commit-lsn. */
+  async commitLsn(): Promise<string> {
+    const { rows } = await this.pool.query<{ lsn: string }>('SELECT pg_current_wal_lsn()::text AS lsn');
+    return (rows[0] as { lsn: string }).lsn;
+  }
+
+  /** Without x-min-lsn the read has no read-your-writes need for the replica to honour, so it uses the primary. */
+  private read<T>(minLsn: string | undefined, fn: (pool: Pool) => Promise<T>): Promise<T> {
+    if (minLsn !== undefined) return this.router.read(fn, minLsn);
+    m.reads.inc({ target: 'primary' });
+    return fn(this.pool);
+  }
 
   private async connectorCtx(c: PoolClient, driverId: string, stationId: string, connectorId: number): Promise<ConnectorCtx> {
     const { rows } = await c.query<ConnectorCtx>(
@@ -160,12 +175,12 @@ export class DriverService {
     }
   }
 
-  async getReservation(driverId: string, reservationId: number): Promise<ReservationDto> {
-    const { rows } = await this.pool.query<ReservationRow>(
+  async getReservation(driverId: string, reservationId: number, minLsn?: string): Promise<ReservationDto> {
+    const { rows } = await this.read(minLsn, (pool) => pool.query<ReservationRow>(
       `SELECT reservation_id, driver_id, site_id, station_id, connector_id, status, starts_at, expires_at FROM reservations
         WHERE reservation_id = $1 AND driver_id = $2 AND starts_at > now() - interval '62 days'`,
       [reservationId, driverId],
-    );
+    ));
     if (!rows[0]) throw notFound('reservation');
     return reservationDto(rows[0]);
   }
@@ -201,10 +216,9 @@ export class DriverService {
     });
   }
 
-  async getSession(driverId: string, sessionId: string): Promise<SessionDto> {
-    const { rows } = await this.pool.query<SessionRow>(
-      `SELECT ${SESSION_COLUMNS} FROM sessions s LEFT JOIN active_sessions a ON a.session_id = s.session_id WHERE ${SESSION_BY_ID} AND s.driver_id = $2`,
-      [sessionId, driverId],
+  async getSession(driverId: string, sessionId: string, minLsn?: string): Promise<SessionDto> {
+    const { rows } = await this.read(minLsn, (pool) =>
+      pool.query<SessionRow>(`SELECT ${SESSION_COLUMNS} FROM sessions s LEFT JOIN active_sessions a ON a.session_id = s.session_id WHERE ${SESSION_BY_ID} AND s.driver_id = $2`, [sessionId, driverId]),
     );
     if (!rows[0]) throw notFound('session');
     return sessionDto(rows[0]);
@@ -226,12 +240,14 @@ export class DriverService {
   }
 
   /** GET /v1/drivers/:id/sessions, newest first; `before` (ISO time) pages backwards. */
-  async listDriverSessions(driverId: string, limit: number, before?: string): Promise<{ sessions: SessionDto[] }> {
-    const { rows } = await this.pool.query<SessionRow>(
-      `SELECT ${SESSION_COLUMNS} FROM sessions s LEFT JOIN active_sessions a ON a.session_id = s.session_id
-        WHERE s.driver_id = $1 AND ($3::timestamptz IS NULL OR s.started_at < $3::timestamptz)
-        ORDER BY s.started_at DESC LIMIT $2`,
-      [driverId, limit, before ?? null],
+  async listDriverSessions(driverId: string, limit: number, before?: string, minLsn?: string): Promise<{ sessions: SessionDto[] }> {
+    const { rows } = await this.read(minLsn, (pool) =>
+      pool.query<SessionRow>(
+        `SELECT ${SESSION_COLUMNS} FROM sessions s LEFT JOIN active_sessions a ON a.session_id = s.session_id
+          WHERE s.driver_id = $1 AND ($3::timestamptz IS NULL OR s.started_at < $3::timestamptz)
+          ORDER BY s.started_at DESC LIMIT $2`,
+        [driverId, limit, before ?? null],
+      ),
     );
     return { sessions: rows.map(sessionDto) };
   }

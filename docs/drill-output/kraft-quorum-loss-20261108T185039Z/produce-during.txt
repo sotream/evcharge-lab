@@ -1,0 +1,1 @@
+Option --producer-props has been deprecated and will be removed in a future version. Use --command-property instead.

@@ -7,7 +7,8 @@ import { AuthGuard, driverIdOf } from './auth.guard';
 import { AuthService } from './auth.service';
 import { APP_CONFIG, DOWNSTREAM } from './tokens';
 import type { Config } from './config';
-import { asDriver, type Downstream, readOpts } from './downstream';
+import { asDriver, COMMIT_LSN_HEADER, type Downstream, MIN_LSN_HEADER, readOpts } from './downstream';
+import { LsnTracker } from './lsn-tracker';
 import { metrics } from './metrics';
 import { badRequest, parse, ProblemError, ProblemFilter } from './problem';
 import { TtlCache } from './sites-cache';
@@ -51,6 +52,7 @@ function relay(reply: FastifyReply, res: HttpResponse<unknown>): unknown {
 export class DriverController {
   private readonly sitesCache: TtlCache<unknown>;
   private readonly read: { timeoutMs: number; retries: number };
+  private readonly lsns: LsnTracker;
 
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
@@ -58,7 +60,20 @@ export class DriverController {
     @Inject(APP_CONFIG) config: Config,
   ) {
     this.read = readOpts(config);
+    this.lsns = new LsnTracker(config.MIN_LSN_TTL_MS);
     this.sitesCache = new TtlCache(config.SITES_CACHE_TTL_MS, Date.now, (hit) => metrics.sitesCache.inc({ result: hit ? 'hit' : 'miss' }));
+  }
+
+  /** Remembers the commit LSN of a successful write for the driver (and one resource) and relays the response. */
+  private written(reply: FastifyReply, driverId: string, res: HttpResponse<unknown>, resource?: string): unknown {
+    this.lsns.record(driverId, res.headers.get(COMMIT_LSN_HEADER), resource);
+    return relay(reply, res);
+  }
+
+  /** Headers for a read of the driver's own data: identity plus x-min-lsn while their last write may still be replicating. */
+  private readHeaders(driverId: string, resource?: string): Record<string, string> {
+    const min = this.lsns.minLsn(driverId, resource);
+    return min ? { ...asDriver(driverId), [MIN_LSN_HEADER]: min } : asDriver(driverId);
   }
 
   @Get('me')
@@ -88,14 +103,16 @@ export class DriverController {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
     const payload = parse(S.createReservationReq, body);
-    return relay(reply, await this.ds.sessions.post('/v1/reservations', payload, { idempotencyKey: k, headers: asDriver(driverId) }));
+    const res = await this.ds.sessions.post<{ reservationId?: number }>('/v1/reservations', payload, { idempotencyKey: k, headers: asDriver(driverId) });
+    return this.written(reply, driverId, res, res.body?.reservationId === undefined ? undefined : `reservation:${res.body.reservationId}`);
   }
 
   @Delete('reservations/:id')
   async cancelReservation(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Param('id') id: string, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
-    return relay(reply, await this.ds.sessions.delete(`/v1/reservations/${parse(intId, id)}`, { idempotencyKey: k, headers: asDriver(driverId) }));
+    const reservationId = parse(intId, id);
+    return this.written(reply, driverId, await this.ds.sessions.delete(`/v1/reservations/${reservationId}`, { idempotencyKey: k, headers: asDriver(driverId) }), `reservation:${reservationId}`);
   }
 
   @Post('sessions')
@@ -103,26 +120,28 @@ export class DriverController {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
     const payload = parse(S.remoteStartReq, body);
-    return relay(reply, await this.ds.sessions.post('/v1/sessions/remote-start', payload, { idempotencyKey: k, headers: asDriver(driverId) }));
+    return this.written(reply, driverId, await this.ds.sessions.post('/v1/sessions/remote-start', payload, { idempotencyKey: k, headers: asDriver(driverId) }));
   }
 
   @Get('sessions')
   async listSessions(@Req() req: Req, @Query() q: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const driverId = driverIdOf(req);
-    return relay(reply, await this.ds.sessions.get(`/v1/drivers/${driverId}/sessions`, { ...this.read, query: parse(pageQuery, q), headers: asDriver(driverId) }));
+    return relay(reply, await this.ds.sessions.get(`/v1/drivers/${driverId}/sessions`, { ...this.read, query: parse(pageQuery, q), headers: this.readHeaders(driverId) }));
   }
 
   @Get('sessions/:id')
   async getSession(@Req() req: Req, @Param('id') id: string, @Res({ passthrough: true }) reply: FastifyReply) {
     const driverId = driverIdOf(req);
-    return relay(reply, await this.ds.sessions.get(`/v1/sessions/${parse(uuid, id)}`, { ...this.read, headers: asDriver(driverId) }));
+    const sessionId = parse(uuid, id);
+    return relay(reply, await this.ds.sessions.get(`/v1/sessions/${sessionId}`, { ...this.read, headers: this.readHeaders(driverId, `session:${sessionId}`) }));
   }
 
   @Post('sessions/:id/stop')
   async stopSession(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Param('id') id: string, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
-    return relay(reply, await this.ds.sessions.post(`/v1/sessions/${parse(uuid, id)}/stop`, undefined, { idempotencyKey: k, headers: asDriver(driverId) }));
+    const sessionId = parse(uuid, id);
+    return this.written(reply, driverId, await this.ds.sessions.post(`/v1/sessions/${sessionId}/stop`, undefined, { idempotencyKey: k, headers: asDriver(driverId) }), `session:${sessionId}`);
   }
 
   /** Live power of the session's connector plus the 1-minute series since the session started. Ownership is enforced by sessions. */
@@ -130,7 +149,8 @@ export class DriverController {
   async power(@Req() req: Req, @Param('id') id: string, @Query() q: unknown) {
     const driverId = driverIdOf(req);
     const { step } = parse(powerQuery, q);
-    const { body: s } = await this.ds.sessions.get<z.infer<typeof S.session>>(`/v1/sessions/${parse(uuid, id)}`, { ...this.read, headers: asDriver(driverId) });
+    const sessionId = parse(uuid, id);
+    const { body: s } = await this.ds.sessions.get<z.infer<typeof S.session>>(`/v1/sessions/${sessionId}`, { ...this.read, headers: this.readHeaders(driverId, `session:${sessionId}`) });
     const path = `/v1/stations/${encodeURIComponent(s.stationId)}/connectors/${s.connectorId}`;
     const [latest, series] = await Promise.all([
       this.ds.telemetry

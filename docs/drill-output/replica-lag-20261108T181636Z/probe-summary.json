@@ -1,0 +1,15 @@
+{
+  "ryw_checks": 108,
+  "ryw_violations": 0,
+  "stale_probes": 30,
+  "stale_max_s": 3.017,
+  "stale_unresolved": 6,
+  "probe_errors": 4,
+  "reads": 55718,
+  "read_errors": 0,
+  "read_p99_ms": {
+    "before": 3.990582999998878,
+    "during": 4.250499999994645,
+    "after": 4.39304200001061
+  }
+}

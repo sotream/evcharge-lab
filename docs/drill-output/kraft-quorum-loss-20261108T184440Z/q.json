@@ -1,0 +1,13 @@
+{
+  "sim_connected": "sum(sim_connected_stations)",
+  "sim_active_sessions": "sum(sim_active_sessions)",
+  "remote_stop_total": "sum(gateway_commands_total{action=\"RemoteStopTransaction\"})",
+  "meter_values_in_per_s": "sum(rate(ocpp_messages_total{direction=\"in\",type=\"call\",action=\"MeterValues\"}[10s]))",
+  "produce_errors_per_s": "sum(rate(gateway_produce_errors_total[10s]))",
+  "produce_rejected_per_s": "sum(rate(gateway_produce_rejected_total[10s]))",
+  "produce_buffer_depth": "sum(gateway_produce_buffer_depth)",
+  "rows_ingested_per_s": "sum(rate(telemetry_rows_ingested_total[10s]))",
+  "ingest_lag_p99_s": "histogram_quantile(0.99, sum by (le) (rate(telemetry_ingest_lag_seconds_bucket[30s])))",
+  "callresult_p99_s": "histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket[30s])))",
+  "outbox_pending": "sum(outbox_pending)"
+}

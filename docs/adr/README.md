@@ -19,3 +19,6 @@ MADR style. One decision per file; superseded ADRs stay with a pointer to the re
 | [0012](0012-kafka-replication-and-producer-backpressure.md) | Kafka replication (RF 3, min ISR 2), producer durability, backpressure, broker drills |
 | [0013](0013-traffic-generators-simulator-and-backfill.md) | Traffic generators: OCPP station simulator and telemetry backfill |
 | [0014](0014-observability-slo-recording-rules-and-alerts.md) | Observability: SLO recording rules, burn-rate alerts, exporters, no Alertmanager |
+| [0015](0015-read-replica-and-read-your-writes-for-sessions.md) | Sessions read replica, read routing and read-your-writes by LSN |
+| [0016](0016-consensus-kraft-quorum.md) | Consensus: KRaft controller quorum, quorum maths, what quorum loss does |
+| [0017](0017-consistency-models.md) | Consistency models per piece of state, replication and partitioning |

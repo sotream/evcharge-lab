@@ -1,0 +1,14 @@
+# 2026-11-08T18:44:42Z describe --status
+ClusterId:              evchargeLabKRaftCluster01
+LeaderId:               1
+LeaderEpoch:            2
+HighWatermark:          11001
+MaxFollowerLag:         0
+MaxFollowerLagTimeMs:   0
+CurrentVoters:          [{"id": 1, "endpoints": ["CONTROLLER://kafka-1:9093"]}, {"id": 2, "endpoints": ["CONTROLLER://kafka-2:9093"]}, {"id": 3, "endpoints": ["CONTROLLER://kafka-3:9093"]}]
+CurrentObservers:       []
+# 2026-11-08T18:44:43Z describe --replication
+NodeId	DirectoryId           	LogEndOffset	Lag	LastFetchTimestamp	LastCaughtUpTimestamp	Status  	
+1     	AAAAAAAAAAAAAAAAAAAAAA	11004       	0  	1794163484054     	1794163484054        	Leader  	
+2     	AAAAAAAAAAAAAAAAAAAAAA	11004       	0  	1794163484034     	1794163484034        	Follower	
+3     	AAAAAAAAAAAAAAAAAAAAAA	11004       	0  	1794163484034     	1794163484034        	Follower	

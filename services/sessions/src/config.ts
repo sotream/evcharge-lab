@@ -4,6 +4,12 @@ import { z } from 'zod';
 export const configSchema = baseConfigSchema.extend({
   SERVICE_NAME: z.string().min(1).default('sessions'),
   DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'must be a postgres:// URL'),
+  /** Optional hot standby (ADR 0015). Unset or empty: every read uses the primary. */
+  REPLICA_DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'must be a postgres:// URL').or(z.literal('')).optional(),
+  REPLICA_PG_POOL_MAX: z.coerce.number().int().min(2).max(200).default(20),
+  /** Read-your-writes: longest wait for the replica to replay x-min-lsn before reading the primary. */
+  REPLICA_RYW_TIMEOUT_MS: z.coerce.number().int().min(0).max(5000).default(200),
+  REPLICA_RYW_POLL_MS: z.coerce.number().int().min(1).max(1000).default(20),
   PG_POOL_MAX: z.coerce.number().int().min(2).max(200).default(20),
   KAFKA_BROKERS: csv(),
   REDIS_URL: z.string().regex(/^rediss?:\/\//, 'must be a redis:// URL'),

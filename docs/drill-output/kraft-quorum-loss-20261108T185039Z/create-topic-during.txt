@@ -1,0 +1,2 @@
+2026-11-08T18:52:38Z RUN docker compose exec -T kafka-1 timeout 25 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-1:9092 --create --topic drill.kraft-denied --partitions 1 --replication-factor 1
+WARNING: Due to limitations in metric names, topics with a period ('.') or underscore ('_') could collide. To avoid issues it is best to use either, but not both.

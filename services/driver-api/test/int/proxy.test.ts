@@ -18,7 +18,7 @@ function sessionsStub(r: Recorded): StubReply {
   if (r.method === 'POST' && r.path === '/v1/reservations') {
     if (r.body.connectorId === 9) return { status: 409, body: { title: 'Conflict', status: 409, code: 'connector_unavailable', detail: 'connector is reserved' } };
     const replayed = r.headers['idempotency-key'] === 'replay-me';
-    return { status: 201, body: { reservationId: 7, driverId: driver, status: 'Active' }, ...(replayed ? { headers: { 'idempotent-replayed': 'true' } } : {}) };
+    return { status: 201, body: { reservationId: 7, driverId: driver, status: 'Active' }, headers: { 'x-commit-lsn': '0/1A2B', ...(replayed ? { 'idempotent-replayed': 'true' } : {}) } };
   }
   if (r.method === 'DELETE' && r.path === '/v1/reservations/7') return { status: 200, body: { reservationId: 7, status: 'Cancelled' } };
   if (r.method === 'POST' && r.path === '/v1/sessions/remote-start') return { status: 202, body: { commandId: randomUUID(), status: 'Requested' } };
@@ -309,6 +309,21 @@ describe('downstream failures', () => {
     } finally {
       await e.close();
     }
+  });
+});
+
+describe('read-your-writes (ADR 0015)', () => {
+  it('forwards the commit LSN of a write as x-min-lsn on that driver only', async () => {
+    const c = await signUp(env);
+    await call(env.url, 'GET', '/v1/sessions', { token: c.access });
+    expect(last(env.sessions).headers['x-min-lsn']).toBeUndefined();
+    const res = await call(env.url, 'POST', '/v1/reservations', { token: c.access, headers: { 'idempotency-key': randomUUID() }, body: { stationId: 'st-1', connectorId: 1 } });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('x-commit-lsn')).toBeNull(); // internal detail, not sent to drivers
+    await call(env.url, 'GET', '/v1/sessions', { token: c.access });
+    expect(last(env.sessions).headers['x-min-lsn']).toBe('0/1A2B');
+    await call(env.url, 'GET', '/v1/sessions', { token: b.access });
+    expect(last(env.sessions).headers['x-min-lsn']).toBeUndefined();
   });
 });
 

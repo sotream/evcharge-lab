@@ -35,16 +35,56 @@ services:
       POSTGRES_USER: evcharge
       POSTGRES_PASSWORD: evcharge
       POSTGRES_DB: evcharge
-    command: ["postgres", "-c", "max_connections=400", "-c", "shared_buffers=512MB", "-c", "synchronous_commit=on"]
+    # Primary of the sessions read replica (ADR 0015): wal_level=replica, a replicator role, a physical slot whose retained
+    # WAL is capped at 2 GB (a stopped replica must not fill the disk), and pg_hba allowing replication on the compose network.
+    command:
+      - postgres
+      - -c
+      - max_connections=400
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - synchronous_commit=on
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - max_slot_wal_keep_size=2GB
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     ports: ["25432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - ./infra/postgres/init-replication.sql:/docker-entrypoint-initdb.d/01-replication.sql:ro
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U evcharge -d evcharge"]
       interval: 3s
       timeout: 3s
       retries: 30
+
+  # Hot standby of the OLTP primary for stale-tolerant reads of sessions (ADR 0015), bootstrapped by pg_basebackup -R.
+  postgres-replica:
+    image: postgres:18.6-alpine
+    user: postgres
+    entrypoint: ["/bin/sh", "/replica-entrypoint.sh"]
+    ports: ["25434:5432"]
+    volumes:
+      - pgreplica:/var/lib/postgresql
+      - ./infra/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U evcharge -d evcharge -tAc 'select pg_is_in_recovery()' | grep -q t"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+    depends_on:
+      postgres: { condition: service_healthy }
 
   # Telemetry: separate instance so its WAL/IO and relaxed durability never touch OLTP (ADR 0008).
   postgres-telemetry:
@@ -214,6 +254,17 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
+  # Replica exporter: its default replication collector exposes pg_replication_lag_seconds (0 when nothing waits to be
+  # replayed). Lag in bytes is measured on the primary by sessions (sessions_replica_lag_bytes).
+  postgres-replica-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres-replica:5432/evcharge?sslmode=disable
+    mem_limit: 64m
+    ports: ["29189:9187"]
+    depends_on:
+      postgres-replica: { condition: service_healthy }
+
   postgres-telemetry-exporter:
     image: prometheuscommunity/postgres-exporter:v0.20.1
     environment:
@@ -282,6 +333,7 @@ services:
       <<: *common-env
       SERVICE_NAME: sessions
       DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/sessions
+      REPLICA_DATABASE_URL: postgres://evcharge:evcharge@postgres-replica:5432/sessions
       SMART_CHARGING_URL: http://smart-charging:8080
       SEED_SITES: ${SIM_SITES:-20}
       SEED_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
@@ -408,6 +460,7 @@ services:
 volumes:
   pgdata: {}
   pgtelemetry: {}
+  pgreplica: {}
   kafka1: {}
   kafka2: {}
   kafka3: {}

@@ -58,6 +58,8 @@ export const configSchema = baseConfigSchema.extend({
   REFRESH_GRACE_S: posInt(5),
   /** Short cache for GET /v1/sites (read SLO: 1,000 RPS per instance). 0 disables it. */
   SITES_CACHE_TTL_MS: z.coerce.number().int().min(0).default(3000),
+  /** ADR 0015: how long a write's commit LSN is forwarded as x-min-lsn on the driver's reads. 0 disables it. */
+  MIN_LSN_TTL_MS: z.coerce.number().int().min(0).default(30_000),
   PG_POOL_MAX: z.coerce.number().int().min(2).max(200).default(20),
 });
 export type Config = z.infer<typeof configSchema>;

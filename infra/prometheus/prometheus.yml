@@ -16,6 +16,8 @@ scrape_configs:
     static_configs:
       - targets: [postgres-exporter:9187]
         labels: { db: oltp }
+      - targets: [postgres-replica-exporter:9187]
+        labels: { db: oltp-replica }
       - targets: [postgres-telemetry-exporter:9187]
         labels: { db: telemetry }
   - job_name: redis-exporter

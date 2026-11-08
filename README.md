@@ -53,9 +53,18 @@ make check
 
 Cross-cutting decisions: [0000](docs/adr/0000-requirements-and-capacity.md) requirements, load model and SLOs; [0001](docs/adr/0001-architecture-overview.md) architecture; [0002](docs/adr/0002-contracts-events-and-delivery-semantics.md) contracts, event envelope and at-least-once plus idempotency; [0009](docs/adr/0009-toolchain-and-infrastructure-choices.md) toolchain and versions; [0012](docs/adr/0012-kafka-replication-and-producer-backpressure.md) Kafka replication and backpressure.
 
+## Distributed-systems guarantees
+
+- [ADR 0012](docs/adr/0012-kafka-replication-and-producer-backpressure.md): Kafka replication, producer durability and gateway backpressure. Drills: [`kafka-broker-loss.sh`](drills/kafka-broker-loss.sh) with one and two brokers down.
+- [ADR 0015](docs/adr/0015-read-replica-and-read-your-writes-for-sessions.md): the sessions read replica and read-your-writes by LSN. Drill: [`replica-lag.sh`](drills/replica-lag.sh), run `replica-lag-20261108T183638Z` (11 of 11 checks): the replica was held back for 240 s, peak lag 239.4 s and drained 9 s after release; 0 read-your-writes violations in 624 checks; reads of a driver's own writes fell back to the primary after the 200 ms wait; driver API read p99 0.173 s during the pause (target < 0.3 s). Two earlier runs are kept with notes.
+- [ADR 0016](docs/adr/0016-consensus-kraft-quorum.md): the KRaft controller quorum, quorum maths, and what losing the quorum does. Drill: [`kraft-quorum-loss.sh`](drills/kraft-quorum-loss.sh), run `kraft-quorum-loss-20261108T185039Z` (12 of 12 checks) with 2 of 3 nodes stopped for about 165 s (18:51:44Z to 18:54:29Z, `events.log`): 200 of 200 stations stayed connected, 0 RemoteStopTransaction sent, quorum back in 4 s, first acknowledged produce after 8 s, 0 of 393 probe readings missing (178 generated during this run, 117 while the nodes were down; the rest are left over from run T184440Z). Targets missed during the outage: OCPP CALLRESULT p99 reached 2.48 s (target < 0.5 s) and telemetry ingest lag p99 29.9 s during and 59.2 s after (target < 5 s).
+- [ADR 0017](docs/adr/0017-consistency-models.md): the consistency model, mechanism and staleness bound of every piece of state.
+- 24 h station offline replay at simulator time scale 60 (`station-offline-replay-20261108T190213Z`, 20 stations offline for 1,440 simulated minutes): replay queues empty 40 s after the after phase began (about 49 s after the offline window ended; the reconnect time itself is not recorded), 123,652 probe readings generated, 0 missing, 0 duplicate rows. The replayed-row flag is not checked at time scale 60. The earlier INCONCLUSIVE run (151006Z) is kept.
+- Other drills in [`drills/`](drills/): gateway instance loss, reconnect storm, slow Postgres, smart-charging down. Raw output is in `docs/drill-output/`.
+
 ## Results
 
-The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. [ADR 0000](docs/adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine; the raw files record only `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory, and (in `docs/load-output/*.env.json`) the containers running during each run. No raw file records the laptop model. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from ADR 0000. The chart shows each measured value divided by its target.
+The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. [ADR 0000](docs/adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine; the raw files record only `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory, and (in `docs/load-output/*.env.json`) the containers running during each run. No raw file of the earlier runs (stage 7) records the laptop model. The Wave 3 drills (`replica-lag`, `kraft-quorum-loss`, and the 24 h `station-offline-replay` of 20261108T190213Z) ran on an Apple M4 Pro (12 CPUs, 24 GiB) with a Docker VM of 8 CPUs and 11.7 GiB, recorded in each `env.json`. They are not mixed into one series with the earlier runs. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from ADR 0000. The chart shows each measured value divided by its target.
 
 ![targets vs measured](docs/img/targets-vs-measured.svg)
 
@@ -138,8 +147,55 @@ Labels: **measured** is a value read from a raw file; **derived** is calculated 
 | Drill kafka-broker-loss-2 (20261108T140952Z): max_produce_buffer_depth | ≥ 1 | 187 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
 | Drill kafka-broker-loss-2 (20261108T140952Z): probe_readings_generated | ≥ 1 | 254 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
 | Drill kafka-broker-loss-2 (20261108T140952Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): gateway_live_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): fleet_connected_during_outage | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): topic_create_failed_during_outage | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): remote_stop_sent_during_outage | = 0 | 2 (**FAIL**) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): time_to_quorum_s | ≤ 60 | 5 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): time_to_first_produce_s | ≤ 90 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): time_to_zero_produce_errors_s | ≤ 120 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): max_produce_errors_per_s_during_outage | ≥ 0.01 | 65.61 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): min_active_sessions_during_outage | ≥ 1 | 180 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): probe_readings_generated | ≥ 1 | 158 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T184440Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): gateway_live_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): fleet_connected_during_outage | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): topic_create_failed_during_outage | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): remote_stop_sent_during_outage | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): time_to_quorum_s | ≤ 60 | 4 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): time_to_first_produce_s | ≤ 90 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): time_to_zero_produce_errors_s | ≤ 120 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): max_produce_errors_per_s_during_outage | ≥ 0.01 | 66.2 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): min_active_sessions_during_outage | ≥ 1 | 186 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): probe_readings_generated | ≥ 1 | 393 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill kraft-quorum-loss (20261108T185039Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
 | Drill reconnect-storm (20261108T120311Z): fleet_reconnected_within_s | ≤ 60 | 11 (pass) | measured | [`result.json`](docs/drill-output/reconnect-storm-20261108T120311Z/result.json) |  |
 | Drill reconnect-storm (20261108T120311Z): gateways_ready_after_storm | = 400 | 400 (pass) | measured | [`result.json`](docs/drill-output/reconnect-storm-20261108T120311Z/result.json) |  |
+| Drill replica-lag-20261108T181636Z (20261108T181636Z): result.json | n/a | no result.json | measured | [`timeline.jsonl`](docs/drill-output/replica-lag-20261108T181636Z/timeline.jsonl) |  |
+| Drill replica-lag (20261108T182727Z): replica_in_sync_before | ≤ 2 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): driver_api_read_p99_s_during | ≤ 0.3 | 0.15 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): ryw_fell_back_to_primary | ≥ 1 | 306.38 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): replica_lag_alert_fired | ≥ 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): lag_drained_within_s | ≤ 120 | 9 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): probe_ryw_reads_made | ≥ 3 | 99 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): ryw_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): stale_probes_resolved | ≥ 1 | 27 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): stale_unresolved | = 0 | 6 (**FAIL**) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): stale_excess_over_lag_s | ≤ 0 | -13.42 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T182727Z): client_read_errors | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): replica_in_sync_before | ≤ 2 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): driver_api_read_p99_s_during | ≤ 0.3 | 0.17 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): ryw_fell_back_to_primary | ≥ 1 | 338.04 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): replica_lag_alert_fired | ≥ 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): lag_drained_within_s | ≤ 120 | 9 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): probe_ryw_reads_made | ≥ 3 | 624 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): ryw_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): stale_probes_resolved | ≥ 1 | 208 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): stale_unresolved | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): stale_excess_over_lag_s | ≤ 0 | -12.72 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill replica-lag (20261108T183638Z): client_read_errors | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
 | Drill slow-postgres (20261108T142904Z): ocpp_callresult_p99_s_during | ≤ 0.5 | 2.24 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
 | Drill slow-postgres (20261108T142904Z): lag_drained_within_s | ≤ 300 | 7 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
 | Drill slow-postgres (20261108T142904Z): ingest_lag_p99_s_after_recovery | ≤ 5 | 118.52 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
@@ -175,6 +231,13 @@ Labels: **measured** is a value read from a raw file; **derived** is calculated 
 | Drill station-offline-replay (20261108T151006Z): probe_readings_generated | ≥ 1 | 164,203 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
 | Drill station-offline-replay (20261108T151006Z): probe_readings_missing | = 0 | 82,914 (**FAIL**) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
 | Drill station-offline-replay (20261108T151006Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): stations_taken_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): connected_dropped_during_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): replay_drained_within_s | ≤ 600 | 40 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): queue_dropped_total | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): probe_readings_generated | ≥ 1 | 123,652 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| Drill station-offline-replay (20261108T190213Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
 
 Notes on individual rows:
 
@@ -267,11 +330,41 @@ Key series with before, during and after phases and the checks from `result.json
 
 ![Drill timeline: kafka-broker-loss-2-20261108T140952Z](docs/img/drill-kafka-broker-loss-2-20261108T140952Z.svg)
 
+#### Drill timeline: kraft-quorum-loss-20261108T184440Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
+
+![Drill timeline: kraft-quorum-loss-20261108T184440Z](docs/img/drill-kraft-quorum-loss-20261108T184440Z.svg)
+
+#### Drill timeline: kraft-quorum-loss-20261108T185039Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: kraft-quorum-loss-20261108T185039Z](docs/img/drill-kraft-quorum-loss-20261108T185039Z.svg)
+
 #### Drill timeline: reconnect-storm-20261108T120311Z
 
 Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
 
 ![Drill timeline: reconnect-storm-20261108T120311Z](docs/img/drill-reconnect-storm-20261108T120311Z.svg)
+
+#### Drill timeline: replica-lag-20261108T181636Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: no result.json.
+
+![Drill timeline: replica-lag-20261108T181636Z](docs/img/drill-replica-lag-20261108T181636Z.svg)
+
+#### Drill timeline: replica-lag-20261108T182727Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
+
+![Drill timeline: replica-lag-20261108T182727Z](docs/img/drill-replica-lag-20261108T182727Z.svg)
+
+#### Drill timeline: replica-lag-20261108T183638Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: replica-lag-20261108T183638Z](docs/img/drill-replica-lag-20261108T183638Z.svg)
 
 #### Drill timeline: slow-postgres-20261108T142904Z
 
@@ -314,6 +407,12 @@ Key series with before, during and after phases and the checks from `result.json
 Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
 
 ![Drill timeline: station-offline-replay-20261108T151006Z](docs/img/drill-station-offline-replay-20261108T151006Z.svg)
+
+#### Drill timeline: station-offline-replay-20261108T190213Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: station-offline-replay-20261108T190213Z](docs/img/drill-station-offline-replay-20261108T190213Z.svg)
 <!-- charts:end -->
 
 ## What the drills and reviews caught

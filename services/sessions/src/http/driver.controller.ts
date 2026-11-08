@@ -5,6 +5,7 @@ import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { CatalogService, MAX_RADIUS_KM } from '../driver/catalog.service';
 import { DriverService } from '../driver/driver.service';
+import { isLsn } from '../read-router';
 import { DriverGuard, driverIdOf } from './driver.guard';
 import { badRequest, parse, ProblemError, ProblemFilter } from './problem';
 
@@ -24,6 +25,16 @@ type Req = { driverId?: string };
 function idempotencyKey(raw: string | undefined): string {
   if (!raw) throw new ProblemError(400, 'idempotency_key_required', 'Idempotency key required', 'idempotency-key header is required');
   if (raw.length > 200) throw badRequest('idempotency-key is too long');
+  return raw;
+}
+
+/** ADR 0015: write responses carry the primary's WAL position after the commit; driver-api returns it as x-min-lsn on later reads. */
+export const COMMIT_LSN_HEADER = 'x-commit-lsn';
+export const MIN_LSN_HEADER = 'x-min-lsn';
+
+function minLsn(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  if (!isLsn(raw)) throw badRequest('x-min-lsn must be a Postgres LSN such as 16/B374D848');
   return raw;
 }
 
@@ -56,47 +67,55 @@ export class DriverController {
   @UseGuards(DriverGuard)
   async reserve(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
-    return send(reply, await this.drivers.createReservation(driverIdOf(req), k, parse(P.createReservationReq, body)));
+    const out = send(reply, await this.drivers.createReservation(driverIdOf(req), k, parse(P.createReservationReq, body)));
+    reply.header(COMMIT_LSN_HEADER, await this.drivers.commitLsn());
+    return out;
   }
 
   @Get('reservations/:id')
   @UseGuards(DriverGuard)
-  getReservation(@Req() req: Req, @Param('id') id: string) {
-    return this.drivers.getReservation(driverIdOf(req), parse(intId, id));
+  getReservation(@Req() req: Req, @Param('id') id: string, @Headers(MIN_LSN_HEADER) min: string | undefined) {
+    return this.drivers.getReservation(driverIdOf(req), parse(intId, id), minLsn(min));
   }
 
   @Delete('reservations/:id')
   @UseGuards(DriverGuard)
-  cancelReservation(@Req() req: Req, @Param('id') id: string) {
-    return this.drivers.cancelReservation(driverIdOf(req), parse(intId, id));
+  async cancelReservation(@Req() req: Req, @Param('id') id: string, @Res({ passthrough: true }) reply: FastifyReply) {
+    const out = await this.drivers.cancelReservation(driverIdOf(req), parse(intId, id));
+    reply.header(COMMIT_LSN_HEADER, await this.drivers.commitLsn());
+    return out;
   }
 
   @Post('sessions/remote-start')
   @UseGuards(DriverGuard)
   async remoteStart(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
-    return send(reply, await this.drivers.remoteStart(driverIdOf(req), k, parse(P.remoteStartReq, body)));
+    const out = send(reply, await this.drivers.remoteStart(driverIdOf(req), k, parse(P.remoteStartReq, body)));
+    reply.header(COMMIT_LSN_HEADER, await this.drivers.commitLsn());
+    return out;
   }
 
   @Get('sessions/:id')
   @UseGuards(DriverGuard)
-  getSession(@Req() req: Req, @Param('id') id: string) {
-    return this.drivers.getSession(driverIdOf(req), parse(uuid, id));
+  getSession(@Req() req: Req, @Param('id') id: string, @Headers(MIN_LSN_HEADER) min: string | undefined) {
+    return this.drivers.getSession(driverIdOf(req), parse(uuid, id), minLsn(min));
   }
 
   @Post('sessions/:id/stop')
   @HttpCode(202)
   @UseGuards(DriverGuard)
-  stopSession(@Req() req: Req, @Param('id') id: string) {
-    return this.drivers.stopSession(driverIdOf(req), parse(uuid, id));
+  async stopSession(@Req() req: Req, @Param('id') id: string, @Res({ passthrough: true }) reply: FastifyReply) {
+    const out = await this.drivers.stopSession(driverIdOf(req), parse(uuid, id));
+    reply.header(COMMIT_LSN_HEADER, await this.drivers.commitLsn());
+    return out;
   }
 
   @Get('drivers/:id/sessions')
   @UseGuards(DriverGuard)
-  driverSessions(@Req() req: Req, @Param('id') id: string, @Query() q: unknown) {
+  driverSessions(@Req() req: Req, @Param('id') id: string, @Query() q: unknown, @Headers(MIN_LSN_HEADER) min: string | undefined) {
     const driverId = driverIdOf(req);
     if (parse(uuid, id).toLowerCase() !== driverId) throw new ProblemError(403, 'forbidden', 'Forbidden', 'x-driver-id does not match the requested driver');
     const { limit, before } = parse(listQuery, q);
-    return this.drivers.listDriverSessions(driverId, limit, before);
+    return this.drivers.listDriverSessions(driverId, limit, before, minLsn(min));
   }
 }

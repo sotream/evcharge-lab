@@ -26,3 +26,7 @@ export const asDriver = (driverId: string): Record<string, string> => ({ 'x-driv
 
 /** Per-call options for reads: short attempt timeout, at most one retry (about 3 s overall). */
 export const readOpts = (c: Config) => ({ timeoutMs: c.READ_TIMEOUT_MS, retries: c.READ_RETRIES });
+
+/** ADR 0015: sessions returns the primary's WAL position after each write in this header. */
+export const COMMIT_LSN_HEADER = 'x-commit-lsn';
+export const MIN_LSN_HEADER = 'x-min-lsn';
