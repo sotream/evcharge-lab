@@ -1,0 +1,88 @@
+name: images
+
+# Pull requests only prove that every image builds. Pushes to main publish them to GHCR (ADR 0020).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build only: no login, no push, no packages permission.
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: station-gateway, dockerfile: services/station-gateway/Dockerfile }
+          - { name: sessions, dockerfile: services/sessions/Dockerfile }
+          - { name: smart-charging, dockerfile: services/smart-charging/Dockerfile }
+          - { name: tariff, dockerfile: services/tariff/Dockerfile }
+          - { name: billing, dockerfile: services/billing/Dockerfile }
+          - { name: telemetry-ingest, dockerfile: services/telemetry-ingest/Dockerfile }
+          - { name: driver-api, dockerfile: services/driver-api/Dockerfile }
+          - { name: simulator, dockerfile: simulator/Dockerfile }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Push to main: ghcr.io/sotream/evcharge-lab-<name>:<short sha> and :main.
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: station-gateway, dockerfile: services/station-gateway/Dockerfile }
+          - { name: sessions, dockerfile: services/sessions/Dockerfile }
+          - { name: smart-charging, dockerfile: services/smart-charging/Dockerfile }
+          - { name: tariff, dockerfile: services/tariff/Dockerfile }
+          - { name: billing, dockerfile: services/billing/Dockerfile }
+          - { name: telemetry-ingest, dockerfile: services/telemetry-ingest/Dockerfile }
+          - { name: driver-api, dockerfile: services/driver-api/Dockerfile }
+          - { name: simulator, dockerfile: simulator/Dockerfile }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/sotream/evcharge-lab-${{ matrix.name }}:${{ steps.sha.outputs.short }}
+            ghcr.io/sotream/evcharge-lab-${{ matrix.name }}:main
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

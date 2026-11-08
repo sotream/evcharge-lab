@@ -1,5 +1,7 @@
 # evcharge-lab
 
+[![CI](https://github.com/sotream/evcharge-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/sotream/evcharge-lab/actions/workflows/ci.yml)
+
 evcharge-lab is the charge point operator (CPO) side of an EV charging platform, built as a system-design lab. Seven services (NestJS and Go) and an OCPP 1.6J station simulator answer concrete questions: how to hold thousands of long-lived WebSockets across several instances, how to take reservations under contention without double-booking, how to split a hard site power cap fairly and safely, how to get an exactly-once billing effect out of at-least-once delivery, and how to absorb a bursty telemetry stream. Every decision is written down in an [ADR](docs/adr/README.md) against explicit load targets ([ADR 0000](docs/adr/0000-requirements-and-capacity.md)). The numbers in the generated blocks of this README (the metrics table and the charts) are read from raw files in `docs/load-output/` and `docs/drill-output/` by a script, labelled as measured or derived, and the targets that were missed stay visible as missed. The prose in "What the drills and reviews caught" and "Known limits" also quotes numbers; those were observed during the build, and each one is labelled as measured (with its file), derived (with its formula), observed but not saved as a file, or a review scenario.
 
 ![architecture](docs/img/architecture.svg)
@@ -672,3 +674,7 @@ node scripts/charts/build.mjs
 ```
 
 This rewrites `docs/img/*.svg` and the two generated blocks in this README from the raw files only. See [`scripts/charts/README.md`](scripts/charts/README.md).
+
+## CI and license
+
+Pull requests run `make check`, a gitleaks scan of the full history and the image builds in GitHub Actions; drills and load tests stay local because their numbers belong to the measurement laptop ([ADR 0020](docs/adr/0020-ci-on-github-actions-and-image-publishing.md)). Images for `main` are on GHCR (see the [runbook](docs/runbook.md)). Licensed under the [MIT License](LICENSE).

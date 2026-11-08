@@ -1,0 +1,22 @@
+title = "evcharge-lab gitleaks"
+
+[extend]
+useDefault = true
+
+# Each entry below is limited to the generic-api-key rule and to test or fixture paths.
+# Nothing else is allowlisted: a hit in production code or any other rule still fails CI.
+
+[[allowlists]]
+description = "Test and fixture values only (generic-api-key)"
+targetRules = ["generic-api-key"]
+condition = "OR"
+paths = [
+  # SHA-256 hashes of fake station secrets in the generated fleet fixture (hashes, not secrets).
+  '''^packages/contracts/schemas/fleet-fixture\.json$''',
+  # Go unit tests use literals such as 0123456789abcdef as fake tokens.
+  '''_test\.go$''',
+  # TypeScript unit tests use literals such as tok-1234567890abcd as fake tokens.
+  '''\.test\.ts$''',
+  # The driver-api integration harness sets a throwaway JWT secret for the test process.
+  '''^services/driver-api/test/int/harness\.ts$''',
+]
