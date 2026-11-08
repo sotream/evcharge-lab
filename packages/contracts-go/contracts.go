@@ -76,6 +76,7 @@ type AllocateReq struct {
 	SiteCapW       int64             `json:"siteCapW"`
 	IdleConnectors int64             `json:"idleConnectors"`
 	StartW         int64             `json:"startW"`
+	ComputedAt     *time.Time        `json:"computedAt,omitempty"`
 	Sessions       []AllocateSession `json:"sessions"`
 }
 

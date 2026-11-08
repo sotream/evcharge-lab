@@ -5,7 +5,7 @@ import { createConsumer, type KafkaConsumer } from '../../src/kafka/consumer';
 import { makeEnvelope } from '../../src/kafka/envelope';
 import { createProducer, type KafkaProducer } from '../../src/kafka/producer';
 import { registry } from '../../src/metrics/metrics';
-import { enqueueOutbox, OUTBOX_DDL, OutboxRelay } from '../../src/outbox/outbox';
+import { enqueueOutbox, OUTBOX_DDL, OUTBOX_RELAY_LOCK_KEY, OutboxRelay } from '../../src/outbox/outbox';
 import { withTx } from '../../src/postgres/postgres';
 import { injectTraceHeaders } from '../../src/telemetry/propagation';
 import { captureLogger, sample, spanContext, TRACE_ID, waitFor } from '../helpers';
@@ -75,7 +75,7 @@ describe('outbox', () => {
     expect(await pending()).toBe(0);
   });
 
-  it('several relays publish every row exactly once (SKIP LOCKED)', async () => {
+  it('several relays publish every row exactly once, in per-key order (single active relay)', async () => {
     received.length = 0;
     const N = 300;
     for (let i = 0; i < N; i += 50) {
@@ -90,7 +90,13 @@ describe('outbox', () => {
     await new Promise((r) => setTimeout(r, 500));
     expect(received).toHaveLength(N);
     expect(new Set(received.map((r) => r.eventId)).size).toBe(N);
-    // per-key order holds within a single relay batch stream; across relays only "no loss, no dupes" is promised
+    const byKey = new Map<string, number[]>();
+    for (const r of received) {
+      const n = Number(r.gw.slice(3));
+      const k = `CP-${n % 5}`;
+      byKey.set(k, [...(byKey.get(k) ?? []), n]);
+    }
+    for (const seq of byKey.values()) expect(seq).toEqual([...seq].sort((a, b) => a - b));
     await Promise.all(rs.map((r) => r.stop()));
     const text = await registry.metrics();
     expect(sample(text, 'outbox_published_total', { topic })).toBe(N + 1);
@@ -122,5 +128,42 @@ describe('outbox', () => {
     await db.pool.query("UPDATE outbox SET published_at = now() - interval '2 days' WHERE id IN (SELECT id FROM outbox ORDER BY id LIMIT 10)");
     expect(await relay({ retentionMs: 86_400_000 }).cleanup()).toBe(10);
     expect(await relay().refreshPending()).toBe(0);
+  });
+});
+
+describe('outbox commit order', () => {
+  it('does not publish a later-committed row before an earlier-started one with the same key', async () => {
+    received.length = 0;
+    const early = env(10_005); // key CP-0
+    const late = env(10_010); // key CP-0
+    const t1 = await db.pool.connect();
+    try {
+      await t1.query('BEGIN');
+      await t1.query('SELECT pg_current_xact_id()'); // T1 takes its transaction id first
+      await withTx(db.pool, (c) => enqueueOutbox(c, { topic, event: late })); // T2 commits first
+      await enqueueOutbox(t1, { topic, event: early });
+      const r = relay({ listen: false });
+      expect(await r.runOnce()).toBe(0); // T2's row waits: T1 (older) is still running
+      await t1.query('COMMIT');
+      expect(await r.runOnce()).toBe(2);
+    } finally {
+      t1.release();
+    }
+    await waitFor(() => received.length >= 2);
+    expect(received.map((x) => x.eventId)).toEqual([early.eventId, late.eventId]);
+  });
+
+  it('a second relay is a no-op while the first holds the lock', async () => {
+    await withTx(db.pool, (c) => enqueueOutbox(c, { topic, event: env(20_000) }));
+    const holder = await db.pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock($1)', [OUTBOX_RELAY_LOCK_KEY]);
+      expect(await relay({ listen: false }).runOnce()).toBe(0);
+      await holder.query('COMMIT');
+    } finally {
+      holder.release();
+    }
+    expect(await relay({ listen: false }).runOnce()).toBe(1);
   });
 });

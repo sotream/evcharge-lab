@@ -12,7 +12,7 @@ export INTEGRATION ?= 1
 
 .PHONY: check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
 
-check: install contracts topics-sync lint typecheck build test-unit infra-up test-int go-check
+check: install contracts topics-sync lint build typecheck test-unit infra-up test-int go-check
 	@echo "✔ make check passed"
 
 install:
@@ -20,7 +20,7 @@ install:
 
 contracts:
 	pnpm --filter @evcharge/contracts build
-	@git diff --quiet -- packages/contracts/schemas || (echo "generated schemas changed: commit packages/contracts/schemas"; git --no-pager diff --stat -- packages/contracts/schemas)
+	@git diff --quiet -- packages/contracts/schemas || (echo "generated schemas changed: commit packages/contracts/schemas"; git --no-pager diff --stat -- packages/contracts/schemas; exit 1)
 
 topics-sync:
 	node scripts/check-topics.mjs
@@ -33,12 +33,17 @@ typecheck:
 
 build:
 	pnpm build
-	@for m in $(GO_MODULES); do (cd $$m && go build ./...); done
+	@for m in $(GO_MODULES); do (cd $$m && go build ./...) || exit 1; done
 
 test-unit:
 	pnpm test:unit
 
+# Integration tests share Redis and Kafka with the compose stack; running app containers would claim the
+# same station routes, so they are stopped first (infra keeps running).
+APP_SERVICES := simulator station-lb station-gateway-1 station-gateway-2 sessions billing telemetry-ingest smart-charging tariff driver-api
+
 infra-up:
+	@docker compose stop $(APP_SERVICES) >/dev/null 2>&1 || true
 	docker compose up -d --wait postgres postgres-telemetry redis kafka-1 kafka-2 kafka-3
 	docker compose run --rm topics-init >/dev/null
 
@@ -51,7 +56,7 @@ test-int: infra-up
 go-check: infra-up
 	@for m in $(GO_MODULES); do \
 	  echo "── go: $$m"; \
-	  (cd $$m && go vet ./... && golangci-lint run ./... && go test -race -count=1 ./...); \
+	  (cd $$m && go vet ./... && golangci-lint run ./... && go test -race -count=1 ./...) || exit 1; \
 	done
 
 up:

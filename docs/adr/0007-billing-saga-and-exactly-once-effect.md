@@ -38,6 +38,14 @@ session.started  ─▶ AUTHORIZING ─▶ AUTHORIZED ──(session.completed)�
   with the same key. The PSP deduplicates on the key, so a capture that actually succeeded is
   returned, not repeated. A definite decline moves to `CAPTURE_FAILED`, which releases the hold
   (compensation) and emits `billing.payment-failed`.
+- **Remainder above the hold** (erratum, 2026-11-08). A total above the hold, for example a 150 kWh DC
+  session, would otherwise be under-collected. After the hold capture, the saga captures
+  `total − hold` by payment token with `idempotency-key = capture:{invoiceId}:rest`, under the
+  same unknown-outcome rules. The exact capture request (token, amount) is persisted on the first
+  attempt and replayed on every retry, so a card change mid-retry cannot strand a charge. The
+  invoice is `Paid` only when both captures succeed.
+- **Giving up on authorization.** After repeated unknown authorize outcomes, the saga voids the
+  possible hold through the same idempotency key before it proceeds without a hold.
 - Every step runs as `SELECT ... FOR UPDATE` on the saga row, then the effect, then the state
   transition and the outbox write. Workers claim due sagas with `SKIP LOCKED`, so steps for one
   session never run concurrently.

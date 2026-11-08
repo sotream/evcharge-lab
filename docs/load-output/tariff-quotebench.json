@@ -1,0 +1,52 @@
+{
+  "tool": "services/tariff/cmd/quotebench",
+  "startedAt": "2026-11-08T08:38:13.772401Z",
+  "host": {
+    "go": "go1.27.3",
+    "goarch": "arm64",
+    "goos": "darwin",
+    "numCPU": 8
+  },
+  "config": {
+    "concurrency": 32,
+    "durationS": 30,
+    "seed": 1,
+    "sessions": "start uniform over 2025-2026, duration 5-240 min (mean ~45), energy from 3-60 kW mean power",
+    "tariffs": [
+      "std",
+      "tou",
+      "fleet"
+    ],
+    "url": "http://localhost:28586",
+    "warmupS": 3
+  },
+  "server": {
+    "concurrency": "GOMAXPROCS=2(cgroup),DB_MAX_CONNS=8",
+    "cpuLimit": "2",
+    "loadGeneratorHost": "same machine as the server; the load generator shares host CPU",
+    "mode": "container"
+  },
+  "results": [
+    {
+      "mode": "http",
+      "label": "[measured] POST /v1/quote over HTTP keep-alive, closed loop, one service instance",
+      "concurrency": 32,
+      "durationS": 30,
+      "requests": 431994,
+      "errors": {},
+      "quotesPerSecond": 14399.8,
+      "latencyMs": {
+        "max": 59.057,
+        "p50": 1.837,
+        "p95": 5.013,
+        "p99": 7.957
+      },
+      "target": {
+        "p99Ms": 20,
+        "quotesPerSecond": 2000,
+        "source": "docs/adr/0000-requirements-and-capacity.md"
+      },
+      "pass": true
+    }
+  ]
+}

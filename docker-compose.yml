@@ -239,6 +239,7 @@ services:
       SEED_SITES: ${SIM_SITES:-20}
       SEED_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
       SEED_DC_SHARE: "0.2"
+      ACCEPT_UNKNOWN_IDTAGS: "true"
     ports: ["28081:8080"]
 
   smart-charging:
@@ -284,6 +285,13 @@ services:
     <<: *service
     build: { context: ., dockerfile: services/telemetry-ingest/Dockerfile }
     image: evcharge/telemetry-ingest:dev
+    depends_on:
+      postgres-telemetry: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka-1: { condition: service_healthy }
+      kafka-2: { condition: service_healthy }
+      kafka-3: { condition: service_healthy }
+      topics-init: { condition: service_completed_successfully }
     environment:
       SERVICE_NAME: telemetry-ingest
       SHUTDOWN_GRACE: 15s
@@ -326,8 +334,11 @@ services:
       SIM_TIME_SCALE: ${SIM_TIME_SCALE:-1}
       SIM_DRIVERS: ${SIM_DRIVERS:-50}
       SIM_HTTP_PORT: "8080"
+      SIM_PROBE_STATIONS: ${SIM_PROBE_STATIONS:-0}
+      SESSIONS_URL: http://sessions:8080
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
       STATION_SECRET_SEED: ${STATION_SECRET_SEED:-dev-station-seed-change-me}
-    ports: ["28089:8080"]
+    ports: ["127.0.0.1:28089:8080"]
 
 volumes:
   pgdata: {}

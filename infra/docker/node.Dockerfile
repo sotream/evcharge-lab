@@ -2,7 +2,7 @@
 # syntax=docker/dockerfile:1.7
 FROM node:26-alpine AS build
 ARG PKG=@evcharge/CHANGE-ME
-RUN corepack enable
+RUN npm install -g pnpm@12.16.1
 WORKDIR /repo
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages ./packages

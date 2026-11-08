@@ -1,0 +1,297 @@
+{
+  "tool": "scripts/backfill-telemetry",
+  "generatedAt": "2026-11-08T08:29:49.990303Z",
+  "config": {
+    "connectorsPerStation": 2,
+    "days": 7,
+    "end": "2026-11-08T08:00:00Z",
+    "meanUtilisation": 0.1,
+    "queryRuns": 300,
+    "readingIntervalS": 30,
+    "seed": 1,
+    "start": "2026-11-01T08:00:00Z",
+    "stations": 5000,
+    "workers": 4
+  },
+  "load": {
+    "compressedChunks": {
+      "value": 144,
+      "unit": "chunks",
+      "label": "measured"
+    },
+    "compressionSeconds": {
+      "value": 22.6,
+      "unit": "s",
+      "label": "measured"
+    },
+    "copySecondsSummedOverWorkers": {
+      "value": 617.19,
+      "unit": "s",
+      "label": "measured"
+    },
+    "generateSecondsSummedOverWorkers": {
+      "value": 10.54,
+      "unit": "s",
+      "label": "measured"
+    },
+    "refreshPower1mSeconds": {
+      "value": 150.77,
+      "unit": "s",
+      "label": "measured"
+    },
+    "rowCountInDatabase": {
+      "value": 20216542,
+      "unit": "rows",
+      "label": "measured"
+    },
+    "rowsInserted": {
+      "value": 20216542,
+      "unit": "rows",
+      "label": "measured"
+    },
+    "rowsPerSecond": {
+      "value": 106504,
+      "unit": "rows/s",
+      "label": "measured"
+    },
+    "wallSeconds": {
+      "value": 189.82,
+      "unit": "s",
+      "label": "measured"
+    }
+  },
+  "size": {
+    "afterCompressionIndexBytes": {
+      "value": 365658112,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "afterCompressionTableBytes": {
+      "value": 607199232,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "afterCompressionToastBytes": {
+      "value": 2564096,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "afterCompressionTotalBytes": {
+      "value": 975421440,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "beforeCompressionIndexBytes": {
+      "value": 2392268800,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "beforeCompressionTableBytes": {
+      "value": 1909694464,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "beforeCompressionTotalBytes": {
+      "value": 4303347712,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "compressedChunksAfterBytes": {
+      "value": 358776832,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "compressedChunksBeforeBytes": {
+      "value": 3685228544,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "compressedChunksRatioBeforeOverAfter": {
+      "value": 10.27,
+      "unit": "x",
+      "label": "measured"
+    },
+    "overallRatioBeforeOverAfter": {
+      "value": 4.41,
+      "unit": "x",
+      "label": "measured"
+    },
+    "power1mAfterCompressionBytes": {
+      "value": 277733376,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "power1mBeforeCompressionBytes": {
+      "value": 1467916288,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "power1mCompressedChunks": {
+      "value": 14,
+      "unit": "chunks",
+      "label": "measured"
+    },
+    "power1mCompressedChunksAfterBytes": {
+      "value": 58900480,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "power1mCompressedChunksBeforeBytes": {
+      "value": 1248018432,
+      "unit": "bytes",
+      "label": "measured"
+    },
+    "power1mCompressedChunksRatioBeforeOverAfter": {
+      "value": 21.19,
+      "unit": "x",
+      "label": "measured"
+    },
+    "power1mCompressedRows": {
+      "value": 8774648,
+      "unit": "rows",
+      "label": "measured"
+    },
+    "power1mRows": {
+      "value": 10240031,
+      "unit": "rows",
+      "label": "measured"
+    }
+  },
+  "chunks": {
+    "afterCompression": {
+      "bytesMax": 100261888,
+      "bytesMean": 5805884,
+      "bytesMin": 630784,
+      "bytesP50": 1187840,
+      "bytesP95": 10297344,
+      "chunkCount": 168,
+      "compressedChunkCount": 144,
+      "label": "measured",
+      "totalBytes": 975388672
+    },
+    "beforeCompression": {
+      "bytesMax": 100327424,
+      "bytesMean": 25612239,
+      "bytesMin": 3317760,
+      "bytesP50": 10059776,
+      "bytesP95": 99098624,
+      "chunkCount": 168,
+      "compressedChunkCount": 0,
+      "label": "measured",
+      "totalBytes": 4302856192
+    }
+  },
+  "queriesMs": {
+    "latestPerConnectorForStation": {
+      "label": "measured",
+      "max": 50.604,
+      "p50": 5.278,
+      "p95": 23.357,
+      "p99": 36.592,
+      "query": "latest reading per connector, one station (LATERAL ... ORDER BY time DESC LIMIT 1)",
+      "runs": 300
+    },
+    "power1mOneSiteOneDayCompressed": {
+      "label": "measured",
+      "max": 15.521,
+      "p50": 5,
+      "p95": 9.821,
+      "p99": 12.96,
+      "query": "power_1m (materialized only) summed per bucket for the 10 stations of one site over one day, compressed chunks",
+      "runs": 300
+    },
+    "power1mOneSiteOneDayRecent": {
+      "label": "measured",
+      "max": 24.607,
+      "p50": 5.242,
+      "p95": 12.467,
+      "p99": 19.175,
+      "query": "power_1m (materialized only) summed per bucket for the 10 stations of one site over one day, last day (uncompressed)",
+      "runs": 300
+    },
+    "sessionReadingsCompressedChunks": {
+      "label": "measured",
+      "max": 52.862,
+      "p50": 7.7,
+      "p95": 13.584,
+      "p99": 28.598,
+      "query": "readings of one session by transaction_id and a 2 h time range, chunks older than 1 day (compressed)",
+      "runs": 300
+    },
+    "sessionReadingsRecentChunks": {
+      "label": "measured",
+      "max": 8.297,
+      "p50": 2.017,
+      "p95": 3.453,
+      "p99": 4.294,
+      "query": "readings of one session by transaction_id and a 2 h time range, last day (uncompressed)",
+      "runs": 300
+    }
+  },
+  "fullFleetExtrapolation": {
+    "assumptions": {
+      "value": "50,000 stations, 90 days raw (last 1 day uncompressed), 2 years of power_1m (first 7 days uncompressed, then compressed), same per-station profile as measured",
+      "label": "derived"
+    },
+    "averageIngestRowsPerSecondFullFleet": {
+      "value": 334,
+      "unit": "rows/s",
+      "label": "derived",
+      "formula": "rowsPerDayFullFleet / 86400"
+    },
+    "bytesPerRowCompressed": {
+      "value": 20.7,
+      "unit": "bytes",
+      "label": "derived",
+      "formula": "bytesPerRowUncompressed * compressedChunksAfterBytes / compressedChunksBeforeBytes"
+    },
+    "bytesPerRowUncompressed": {
+      "value": 212.9,
+      "unit": "bytes",
+      "label": "derived",
+      "formula": "beforeCompressionTotalBytes / rowsInserted (table + indexes)"
+    },
+    "raw90dSizeGB": {
+      "value": 59.4,
+      "unit": "GB",
+      "label": "derived",
+      "formula": "rowsPerDayFullFleet * (bytesPerRowCompressed * 89 + bytesPerRowUncompressed * 1)"
+    },
+    "rollup2ySizeGB": {
+      "value": 85.7,
+      "unit": "GB",
+      "label": "derived",
+      "formula": "power1mRows / days * (50000 / stations) * (7 * rollupBytesPerRowUncompressed + 723 * rollupBytesPerRowCompressed)"
+    },
+    "rollupBytesPerRowCompressed": {
+      "value": 6.7,
+      "unit": "bytes",
+      "label": "derived",
+      "formula": "power1mCompressedChunksAfterBytes / power1mCompressedRows (measured compressed bytes per row)"
+    },
+    "rollupBytesPerRowUncompressed": {
+      "value": 143.4,
+      "unit": "bytes",
+      "label": "derived",
+      "formula": "power1mBeforeCompressionBytes / power1mRows"
+    },
+    "rowsPerDayFullFleet": {
+      "value": 28880774,
+      "unit": "rows/day",
+      "label": "derived",
+      "formula": "rowsInserted / days * (50000 / stations)"
+    },
+    "totalSizeGB": {
+      "value": 145.1,
+      "unit": "GB",
+      "label": "derived",
+      "formula": "raw90dSizeGB + rollup2ySizeGB"
+    }
+  },
+  "notes": [
+    "Background policy jobs (compression, cagg refresh, retention) were paused during the run and re-enabled afterwards; compression and refresh were run manually.",
+    "power_1m was refreshed before compression to avoid decompressing every chunk; raw chunks and power_1m chunks older than 1 day before the end of the data were then compressed (the power_1m policy would compress after 7 days).",
+    "Station-local time is approximated by UTC hours in the utilisation profile.",
+    "Session-by-transaction queries on compressed chunks cannot use the partial transaction_id index; they are bounded by a time range."
+  ]
+}

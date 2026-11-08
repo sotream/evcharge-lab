@@ -26,17 +26,17 @@ Sites have up to 80 connectors.
 |---|---|---|---|---|
 | Start default | TxDefaultProfile, stackLevel 0, no expiry | `startW = min(minW, floor(cap / connectorsAtSite))` | gateway, right after an accepted BootNotification | the allocator reserves `startW` for every idle connector (below), so a start never exceeds the cap |
 | Allocation | TxProfile, stackLevel 1, `validTo = computedAt + 180 s` | from the allocator | `sessions` through `station.commands` | Σ allocations ≤ cap − Σ idle reserves |
-| Safe share | TxProfile, stackLevel 1, no expiry | `safeShareW = floor(cap / connectorsAtSite)` | the owning gateway, locally, 5 s after an allocation profile expires with nothing newer | Σ over all connectors ≤ cap, whatever the others do |
+| Safe share | TxProfile, stackLevel 1, no expiry | `safeShareW = floor(cap / connectorsAtSite)` | the owning gateway, 5 s after the **whole site** is stale (`alloc:site:{id}` in Redis) | every allocation profile at the site has expired, so all connectors are at ≤ startW; Σ safeShareW over all connectors ≤ cap |
 
 - **Starting a session.** The station charges at `startW` immediately, which meets "safe minimum
   until allocated". `sessions` triggers a reallocation on `StartTransaction`. The target is p99
   < 5 s to the new TxProfile.
 - **Allocator, `sessions` or broker down.** Allocation profiles stop being refreshed. The station
-  drops to `startW` at `validTo`, which is always ≤ the allocation. The gateway then raises the
-  connector to `safeShareW` 5 s later.
-  - All profiles of one allocation round share one `validTo`, so connectors on one site fall back
-    together. The 5 s grace absorbs station clock skew, and the gateway only ever raises a
-    connector after its allocation has expired.
+  drops to `startW` at `validTo`, which is always ≤ the allocation. Once every profile at the site has
+  expired, the gateway raises the connectors to `safeShareW` 5 s later, using the site-wide rule
+  below.
+  - The 5 s grace absorbs station clock skew. The gateway never raises a connector while any
+    allocation at its site may still be in force.
   - This is the "static safe share (cap / connectors)" from ADR 0000. It needs nothing but the
     gateway, which got `chargingDefaults` with the station credential (ADR 0003).
   - Charging never stops.
@@ -54,8 +54,8 @@ Sites have up to 80 connectors.
   - on every session start or stop;
   - every 60 s per site, with measured power from Redis (`power:{station}:{connector}`, written by
     telemetry-ingest). 5,000 sites / 60 s gives about 83/s [derived].
-- It sends `SetChargingProfile` only when a limit changed by at least 2% or 200 W, or when the
-  profile is within 60 s of expiry. That refresh bounds the outbound rate at about 900/s
+- It sends `SetChargingProfile` only when a limit changed by at least max(2%, 200 W), or when the
+  profile is within 60 s of expiry, and it applies changes in two phases (below). That refresh bounds the outbound rate at about 900/s
   [ADR 0000]. Each round emits `site.power-allocated`.
 
 ### Algorithm (max-min fair water-filling with minimums and start reserve)
@@ -67,16 +67,60 @@ Sites have up to 80 connectors.
    `budget ≥ 0`.
 3. **Effective demand.** `demand = maxW`, or after 60 s with a measured value,
    `min(maxW, max(minW, 1.1 × measuredW + 500))`. Headroom then goes to cars that can use it.
-4. **Admission.** Order by `(priority desc, startedAt asc)` and admit sessions while
-   `Σ minW ≤ budget`. Sessions that do not fit get `limitW = startW` and `suspended: true`. They
-   were already counted in the reserve at that rate, so this is still safe, and established
-   sessions are not starved by new arrivals.
+4. **Admission.** Order by `(priority desc, startedAt asc, sessionId)` and admit the next session
+   while `Σ minW(admitted) + startW × (sessions not yet admitted) ≤ budget`. Sessions that do not
+   fit get `limitW = startW` and `suspended: true`. The reserve covers idle connectors only, so
+   suspended sessions must be budgeted at `startW` explicitly. *Erratum (2026-11-08): the first
+   version admitted while `Σ minW ≤ budget` and claimed suspended sessions were already in the
+   reserve. That is false: cap 10,000 W, three sessions at minW 4,140 W, startW 3,333 W gives
+   4,140 + 2 × 3,333 = 10,806 W.* Established sessions are still not starved by new arrivals.
 5. **Water-filling.** Give every admitted session `minW`. Distribute the remaining budget equally
    among sessions whose demand is not yet met, cap each at its demand, and redistribute the
    excess. This is O(n log n).
 6. **Arithmetic and invariant.** int64 W, rounded down. Every response asserts
-   `Σ limitW + reserve ≤ cap`, and the service returns 500 rather than violate it. A property test
-   runs 10^5 random sites with up to 80 connectors.
+   `Σ limitW (including suspended sessions at startW) + reserve ≤ cap`, and the service returns 500
+   rather than violate it. A property test runs 10^5 random sites with up to 80 connectors.
+
+### Profile ids and the site-wide staleness rule (erratum, 2026-11-08 after review)
+
+- **One profile id per connector.** `txProfileId(connectorId) = 100 + connectorId`, shared by the
+  allocation and the safe-share profile of that connector. TxDefaultProfile uses id 1 on
+  connectorId 0. OCPP 1.6 replaces a profile with the same `chargingProfileId` whatever the
+  connector. With the first version's single id 2, connector 2's allocation deleted connector 1's.
+- **The safe share is raised per site, not per connector.** Raising one connector as soon as its
+  own allocation expired could exceed the cap. Example: cap 30 kW, 3 connectors, safe share
+  10 kW, startW 4.14 kW. A holds a live 20 kW allocation, B's refresh failed and B is raised to
+  10 kW, and C is idle at startW: 20 + 10 + 4.14 = 34.1 kW.
+  - Before a round commits, `sessions` raises `alloc:site:{siteId}` in Redis to the latest
+    `validTo` that may be in force at the site. It only ever increases the value. A Redis failure
+    aborts the round, so no profile is sent unannounced.
+  - A gateway raises a connector to `safeShareW` only when `now > alloc:site + 5 s`. At that
+    point every allocation profile at the site has expired, every connector is at most `startW`,
+    and raising all of them to `safeShareW` stays within the cap.
+  - A missing key or a failed read means no raise. Stations stay at `startW`, which is safe.
+
+### Applying an allocation (two-phase, added 2026-11-08 after review)
+
+A correct allocation is not enough. Profiles reach different stations through different
+partitions and gateways, so there is no ordering between them, and a decrease can fail to apply
+(`StationOffline`, `Timeout`, `Rejected`). Applying an increase before the matching decrease has
+taken effect can exceed the cap. For example: cap 30 kW, A at 22 kW, a round gives 15 kW to both A
+and B, A's decrease is lost, and A and B together draw 37 kW. `sessions` therefore applies in two
+phases:
+
+1. For every session, `sessions` tracks the **in-force limit**. That is the last Accepted
+   profile's limit until its `validTo`, or `startW` before any profile. A non-Accepted or pending
+   decrease does not lower it.
+2. A round enqueues all decreases at once. It enqueues an increase only if
+   `cap − Σ max(in-force, pending) of all other sessions − idle reserve` still covers it. Increases
+   that do not fit wait for the next round, and a SetChargingProfile result kicks the site again.
+3. If an increase is held back, the session keeps its in-force limit, which is always safe. If a
+   decrease is never applied, the old profile expires at `validTo`. The station then drops to
+   `startW`, and the gateway safe share takes over.
+
+Change threshold: a profile is re-sent only when `|Δ| ≥ max(2% of the old limit, 200 W)` (both
+thresholds), or within 60 s of `validTo`. This keeps measured-demand jitter from re-sending every
+profile of a site every round.
 
 ### Contract change
 

@@ -10,6 +10,21 @@ import { errorMessage, fullJitterBackoff, sleep } from '../util';
 
 export const OUTBOX_CHANNEL = 'outbox';
 
+/**
+ * Commit-order column (ADR 0002). `tx` is the inserting transaction id. The relay publishes only rows
+ * whose transaction finished before every transaction still running, ordered by (tx, id). Per-key
+ * order then follows causal order even when ids are allocated out of commit order. Apply in
+ * a migration of every service whose outbox table predates it (idempotent).
+ */
+export const OUTBOX_TX_ORDER_DDL = `
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS tx xid8 NOT NULL DEFAULT pg_current_xact_id();
+DROP INDEX IF EXISTS outbox_unpublished_idx;
+CREATE INDEX IF NOT EXISTS outbox_unpublished_tx_idx ON outbox (tx, id) WHERE published_at IS NULL;
+`;
+
+/** Advisory lock key (any constant): only one relay per database publishes at a time. */
+export const OUTBOX_RELAY_LOCK_KEY = 7_201_811_080;
+
 /** Include in a service migration. The trigger NOTIFYs relays on commit of any insert. */
 export const OUTBOX_DDL = `
 CREATE TABLE IF NOT EXISTS outbox (
@@ -21,8 +36,8 @@ CREATE TABLE IF NOT EXISTS outbox (
   created_at timestamptz NOT NULL DEFAULT now(),
   published_at timestamptz NULL
 );
-CREATE INDEX IF NOT EXISTS outbox_unpublished_idx ON outbox (id) WHERE published_at IS NULL;
 CREATE INDEX IF NOT EXISTS outbox_published_at_idx ON outbox (published_at) WHERE published_at IS NOT NULL;
+${OUTBOX_TX_ORDER_DDL}
 CREATE OR REPLACE FUNCTION outbox_notify() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM pg_notify('${OUTBOX_CHANNEL}', '');
@@ -137,8 +152,13 @@ export class OutboxRelay {
   /** One claim/publish/mark cycle. Returns the number of rows published. */
   async runOnce(): Promise<number> {
     const published = await withTx(this.opts.pool, async (client) => {
+      // Single active relay per database: a second replica's cycle is a no-op (keeps per-key order).
+      const lock = await client.query<{ ok: boolean }>('SELECT pg_try_advisory_xact_lock($1) AS ok', [OUTBOX_RELAY_LOCK_KEY]);
+      if (!lock.rows[0]?.ok) return [];
       const { rows } = await client.query<Row>(
-        'SELECT id, topic, key, payload, headers, created_at FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED',
+        `SELECT id, topic, key, payload, headers, created_at FROM outbox
+          WHERE published_at IS NULL AND tx < pg_snapshot_xmin(pg_current_snapshot())
+          ORDER BY tx, id LIMIT $1 FOR UPDATE`,
         [this.batchSize],
       );
       if (rows.length === 0) return [];

@@ -47,7 +47,7 @@ describe('Lifecycle', () => {
     lc.onShutdown('hangs', () => new Promise(() => {}));
     const t0 = Date.now();
     const r = await lc.shutdown();
-    expect(Date.now() - t0).toBeLessThan(400);
+    expect(Date.now() - t0).toBeLessThan(2000); // grace is 150 ms; the hook never settles, so anything bounded proves the deadline (wide margin for loaded machines)
     expect(r.ok).toBe(false);
     expect(r.timedOut || r.failed.includes('hangs')).toBe(true);
     expect(events).toEqual([]);

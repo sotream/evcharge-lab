@@ -58,6 +58,18 @@ room for 24 ingest consumers).
   transaction as the state change. A relay publishes with an idempotent producer and `acks=all`,
   then marks the row as published. A crash between publish and mark produces a duplicate, which is
   accepted.
+- **Outbox ordering** (erratum, 2026-11-08). Per-key order needs two guarantees, which the
+  first version lacked.
+  - **One active relay per database:** `pg_try_advisory_xact_lock` per cycle. Two replicas
+    running `SKIP LOCKED` relays published later rows while earlier ones were still locked.
+  - **Commit order:** each row stores its inserting transaction id (`tx xid8`). The relay
+    publishes only rows with `tx < pg_snapshot_xmin(pg_current_snapshot())`, ordered by
+    `(tx, id)`. This holds back a row whose `bigserial` id came before a still-running
+    transaction. Causal order holds, because a transaction that reads another one's committed
+    effect has a larger transaction id.
+- **Handler errors are retried indefinitely** with capped backoff, and the partition blocks while
+  the lag alert fires. Only undecodable records go to the DLQ. Dead-lettering after a few attempts
+  turned a 3 s Postgres blip into lost invoices.
 - **Consumers** commit offsets only after the handler succeeds (at-least-once). Handlers that
   change state insert `(consumer, eventId)` into `processed_events` in the same transaction
   (inbox). A duplicate then does nothing.
@@ -68,8 +80,9 @@ room for 24 ingest consumers).
 - **Internal HTTP** mutations require `idempotency-key`. The server stores
   `(key, request hash) → response` for 24h. A replay returns the stored response, the same key
   with a different body returns 422, and a concurrent duplicate returns 409.
-- After 5 handler failures a record goes to `<topic>.dlq` with the error in its headers, so one
-  poison message cannot block a partition.
+- A record that cannot be decoded or stored (schema failure, a value the database rejects) goes to
+  `<topic>.dlq` with the error in its headers, so one poison message cannot block a partition.
+  Handler errors from dependencies are retried, not dead-lettered (see above).
 
 ### Internal HTTP
 
@@ -85,7 +98,7 @@ the smart-charging allocator, 1 s for tariff and 3 s for driver-api to downstrea
 - **Kafka transactions for exactly-once.** These only cover read-process-write inside Kafka. The
   effects that matter here (a Postgres invoice, a PSP capture) are outside Kafka, so idempotent
   effects are still required, and transactions would only add latency.
-- **CDC (Debezium) instead of a polling outbox.** It adds another JVM service. A `SKIP LOCKED`
+- **CDC (Debezium) instead of a polling outbox.** It adds another JVM service. A single-leader
   poller with LISTEN/NOTIFY wake-up gives sub-second latency at this volume.
 
 ## Consequences

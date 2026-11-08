@@ -1,0 +1,47 @@
+{
+  "name": "@evcharge/station-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OCPP 1.6J WebSocket gateway: station auth, admission control, Kafka publishing with backpressure, Redis route registry and command routing, gateway-side smart-charging fallback.",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --enable-source-maps dist/main.js",
+    "test:unit": "vitest run --project unit",
+    "test:int": "vitest run --project int"
+  },
+  "dependencies": {
+    "@evcharge/contracts": "workspace:*",
+    "@evcharge/platform": "workspace:*",
+    "@nestjs/common": "^12.4.0",
+    "@nestjs/core": "^12.4.0",
+    "@nestjs/platform-fastify": "^12.4.0",
+    "@opentelemetry/api": "^1.10.0",
+    "ioredis": "^6.0.0",
+    "prom-client": "^15.1.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "ws": "^8.22.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@platformatic/kafka": "^2.15.0",
+    "@types/node": "^26.0.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

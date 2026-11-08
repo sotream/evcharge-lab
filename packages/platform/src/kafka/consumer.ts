@@ -28,7 +28,12 @@ export interface ConsumerOptions<S extends z.ZodType> {
   handler: (event: z.infer<S>, ctx: MessageContext) => Promise<void>;
   /** Partitions processed in parallel (each partition is strictly sequential). Default 8. */
   concurrency?: number;
-  /** Handler attempts before the message goes to `<topic>.dlq`. Default 5. */
+  /**
+   * Handler attempts before the message goes to `<topic>.dlq`. Default: unlimited. A handler error is
+   * usually a dependency outage (DB, broker), so the partition blocks and retries with backoff
+   * (the lag alert fires) instead of dead-lettering real events. Undecodable messages always go to
+   * the DLQ at once.
+   */
   maxAttempts?: number;
   retryBackoffMs?: number;
   retryBackoffMaxMs?: number;
@@ -80,7 +85,7 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
 
   constructor(private readonly opts: ConsumerOptions<S>) {
     this.concurrency = Math.max(1, opts.concurrency ?? 8);
-    this.maxAttempts = Math.max(1, opts.maxAttempts ?? 5);
+    this.maxAttempts = Math.max(1, opts.maxAttempts ?? Number.POSITIVE_INFINITY);
     this.maxBuffered = opts.maxBuffered ?? 1000;
     this.client = new Consumer<string, string, string, string>({
       clientId: opts.clientId ?? opts.groupId,
@@ -253,7 +258,7 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
         lastErr = err;
         this.mMessages.inc({ group, topic, outcome: 'error' });
         this.opts.logger?.warn({ topic, partition, offset: String(offset), attempt, err: errorMessage(err) }, 'kafka handler failed');
-        if (attempt < this.maxAttempts) await sleep(fullJitterBackoff(attempt, this.opts.retryBackoffMs ?? 100, this.opts.retryBackoffMaxMs ?? 5000), this.stopCtl.signal);
+        if (attempt < this.maxAttempts) await sleep(fullJitterBackoff(attempt, this.opts.retryBackoffMs ?? 100, this.opts.retryBackoffMaxMs ?? 30_000), this.stopCtl.signal);
       }
     }
     if (await this.deadLetter(m, headers, 'handler', lastErr, this.maxAttempts)) {

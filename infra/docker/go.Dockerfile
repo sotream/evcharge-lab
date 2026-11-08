@@ -7,6 +7,7 @@ COPY go.work ./
 COPY packages/contracts-go ./packages/contracts-go
 COPY packages/platform-go ./packages/platform-go
 COPY services ./services
+COPY scripts ./scripts
 RUN --mount=type=cache,target=/root/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     cd services/${SVC} && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/${SVC}
 

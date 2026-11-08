@@ -48,7 +48,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
     if (key.length > 255) throw new BadRequestException(`${IDEMPOTENCY_KEY_HEADER} is too long`);
-    const scope = `${req.method} ${req.routeOptions?.url ?? req.url}`;
+    // Caller identity is part of the scope: two drivers must never share a stored response for the same key.
+    const caller = req.headers['x-driver-id'] ?? '-';
+    const scope = `${Array.isArray(caller) ? caller[0] : caller} ${req.method} ${req.routeOptions?.url ?? req.url}`;
     const requestHash = hashRequest(req.method, req.url, req.body);
     const { pool } = this.opts;
 

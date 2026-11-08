@@ -225,15 +225,18 @@ export const Timing = {
 
 /**
  * Smart-charging profile conventions (ADR 0006). All limits in W.
- *  - TxDefaultProfile, stackLevel 0, no validTo, limit = chargingDefaults.startW (sent by the gateway after Boot).
- *  - Allocation TxProfile, stackLevel 1, validTo = computedAt + ALLOCATION_VALIDITY_S (sent via station.commands).
- *  - Gateway safe-share TxProfile, stackLevel 1, no validTo, limit = chargingDefaults.safeShareW,
- *    sent by the owning gateway when an allocation profile expired ALLOCATION_GRACE_S ago with no newer one.
+ *  - TxDefaultProfile, connectorId 0, id DEFAULT_PROFILE_ID, stackLevel 0, no validTo, limit = chargingDefaults.startW
+ *    (sent by the gateway after Boot).
+ *  - Allocation TxProfile, id txProfileId(connectorId), stackLevel 1, validTo = computedAt + ALLOCATION_VALIDITY_S
+ *    (sent by sessions via station.commands).
+ *  - Gateway safe-share TxProfile, the SAME id txProfileId(connectorId), stackLevel 1, no validTo, limit = safeShareW.
+ *    Sent by the owning gateway only when the whole site is stale: now > RedisKeys.siteAllocationValidTo + ALLOCATION_GRACE_S.
+ * One id per connector: OCPP 1.6 replaces a profile with the same chargingProfileId regardless of connector, so a shared
+ * id would let connector 2's profile delete connector 1's.
  */
+export const txProfileId = (connector: number): number => 100 + connector;
 export const ChargingProfiles = {
   DEFAULT_PROFILE_ID: 1,
-  ALLOCATION_PROFILE_ID: 2,
-  SAFE_SHARE_PROFILE_ID: 3,
   ALLOCATION_VALIDITY_S: 180,
   PERIODIC_REALLOCATION_S: 60,
   ALLOCATION_GRACE_S: 5,

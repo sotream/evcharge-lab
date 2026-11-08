@@ -1,0 +1,158 @@
+/**
+ * Idempotent handlers for station.events.v1 and station.command-results.v1 (ADR 0002 inbox on eventId).
+ * Each handler runs in one transaction with its `processed_events` marker.
+ */
+/* oxlint-disable no-await-in-loop */ // statements of one transaction run sequentially on one connection
+import type { events } from '@evcharge/contracts';
+import { type Logger, type Pool, withInbox, withTx } from '@evcharge/platform';
+import { m } from '../metrics';
+import { emitSessionEvent, PRODUCER, type TopicNames } from '../outbox-events';
+import type { SiteSignal } from '../site-signal';
+
+export const STATION_EVENTS_CONSUMER = 'sessions.station-events';
+export const COMMAND_RESULTS_CONSUMER = 'sessions.command-results';
+/** Close code the gateway uses when a newer connection replaced this one (ADR 0003). */
+const REPLACED_CLOSE_CODE = 4000;
+
+export class StationEventHandlers {
+  constructor(
+    private readonly pool: Pool,
+    private readonly topics: TopicNames,
+    private readonly logger: Logger,
+    private readonly signal?: SiteSignal,
+  ) {}
+
+  /** Connector status last-write-wins on the station timestamp; online flag from connect/disconnect. */
+  async stationEvent(e: events.StationEvent): Promise<void> {
+    await withTx(this.pool, (c) =>
+      withInbox(c, STATION_EVENTS_CONSUMER, e.eventId, async () => {
+        switch (e.type) {
+          case 'station.connector-status-changed': {
+            const d = e.data;
+            if (d.connectorId === 0) return; // the charge point as a whole: no connector row
+            const at = d.stationTimestamp ?? e.occurredAt;
+            await c.query(
+              `UPDATE connectors SET status = $3, error_code = $4, status_at = $5
+                WHERE station_id = $1 AND connector_id = $2 AND (status_at IS NULL OR status_at <= $5::timestamptz)`,
+              [d.stationId, d.connectorId, d.status, d.errorCode, at],
+            );
+            return;
+          }
+          case 'station.connected':
+            await c.query(
+              `UPDATE stations SET online = true, gateway_instance = $2, online_changed_at = $3
+                WHERE station_id = $1 AND (online_changed_at IS NULL OR online_changed_at <= $3::timestamptz)`,
+              [e.data.stationId, e.data.gatewayInstance, e.occurredAt],
+            );
+            return;
+          case 'station.disconnected':
+            if (e.data.code === REPLACED_CLOSE_CODE) return; // a newer connection already owns the station
+            await c.query(
+              `UPDATE stations SET online = false, online_changed_at = $3
+                WHERE station_id = $1 AND (gateway_instance IS NULL OR gateway_instance = $2)
+                  AND (online_changed_at IS NULL OR online_changed_at <= $3::timestamptz)`,
+              [e.data.stationId, e.data.gatewayInstance, e.occurredAt],
+            );
+            return;
+          case 'station.booted':
+            await c.query('UPDATE stations SET vendor = $2, model = $3, firmware_version = $4, booted_at = $5 WHERE station_id = $1', [
+              e.data.stationId,
+              e.data.vendor,
+              e.data.model,
+              e.data.firmwareVersion ?? null,
+              e.occurredAt,
+            ]);
+            return;
+        }
+      }),
+    );
+  }
+
+  /** Command outcomes for commands this service requested: reservation transitions, stop/profile rollbacks. */
+  async commandResult(e: events.StationCommandCompleted): Promise<void> {
+    const d = e.data;
+    if (d.requestedBy !== PRODUCER) return;
+    const out = await withTx(this.pool, (c) =>
+      withInbox(c, COMMAND_RESULTS_CONSUMER, e.eventId, async (): Promise<string | undefined> => {
+        const { rows } = await c.query<{ action: string; reservation_id: number | null; reservation_starts_at: Date | null; session_id: string | null; session_started_at: Date | null; limit_w: number | null; valid_to: Date | null }>(
+          `UPDATE commands SET outcome = $2, response = $3, completed_at = now() WHERE command_id = $1 AND outcome IS NULL
+           RETURNING action, reservation_id, reservation_starts_at, session_id, session_started_at, limit_w, valid_to`,
+          [d.commandId, d.outcome, d.response ? JSON.stringify(d.response) : null],
+        );
+        const cmd = rows[0];
+        if (!cmd) return; // unknown or already completed
+        m.commandResults.inc({ action: cmd.action, outcome: d.outcome });
+        const accepted = d.outcome === 'Accepted';
+        switch (cmd.action) {
+          case 'ReserveNow': {
+            if (accepted) {
+              const r = await c.query(
+                "UPDATE reservations SET status = 'Active' WHERE reservation_id = $1 AND starts_at = $2 AND status = 'Pending'",
+                [cmd.reservation_id, cmd.reservation_starts_at],
+              );
+              if (r.rowCount) m.reservationTransitions.inc({ to: 'Active' });
+              return;
+            }
+            const r = await c.query<{ reservation_id: number; driver_id: string; site_id: string; station_id: string; connector_id: number }>(
+              `UPDATE reservations SET status = 'Rejected', ended_at = now() WHERE reservation_id = $1 AND starts_at = $2 AND status IN ('Pending', 'Active')
+               RETURNING reservation_id, driver_id, site_id, station_id, connector_id`,
+              [cmd.reservation_id, cmd.reservation_starts_at],
+            );
+            for (const x of r.rows) {
+              await emitSessionEvent(c, this.topics, 'reservation.ended', x.site_id, { reservationId: x.reservation_id, driverId: x.driver_id, siteId: x.site_id, stationId: x.station_id, connectorId: x.connector_id, reason: 'Rejected' });
+              m.reservationTransitions.inc({ to: 'Rejected' });
+            }
+            return;
+          }
+          case 'RemoteStopTransaction':
+            if (!accepted) {
+              await c.query("UPDATE sessions SET status = 'Active' WHERE session_id = $1 AND started_at = $2 AND status = 'Stopping'", [cmd.session_id, cmd.session_started_at]);
+            }
+            return;
+          case 'SetChargingProfile':
+            return this.profileResult(c, cmd, d.commandId, accepted);
+          default:
+            if (!accepted) this.logger.info({ commandId: d.commandId, action: cmd.action, outcome: d.outcome }, 'station command not accepted');
+        }
+      }),
+    );
+    if (!out.duplicate && out.result) this.signal?.changed(out.result);
+  }
+
+  /**
+   * SetChargingProfile outcome (ADR 0006 two-phase apply). Accepted: the station applies exactly what was sent, so it
+   * becomes the confirmed limit; commands to one station are ordered, so if this was the latest one nothing
+   * unconfirmed remains. Any other outcome never lowers what we assume is in force: the previous limits stay
+   * counted until their validTo. A site that withheld increases is re-triggered (returns its id to kick).
+   */
+  private async profileResult(
+    c: Parameters<Parameters<typeof withTx>[1]>[0],
+    cmd: { session_id: string | null; limit_w: number | null; valid_to: Date | null },
+    commandId: string,
+    accepted: boolean,
+  ): Promise<string | undefined> {
+    if (!cmd.session_id) return undefined;
+    let siteId: string | undefined;
+    if (accepted && cmd.limit_w !== null && cmd.valid_to) {
+      const { rows } = await c.query<{ site_id: string }>(
+        `UPDATE active_sessions SET
+            confirmed_limit_w = CASE WHEN confirmed_valid_to IS NULL OR confirmed_valid_to <= $3 THEN $2 ELSE confirmed_limit_w END,
+            confirmed_valid_to = CASE WHEN confirmed_valid_to IS NULL OR confirmed_valid_to <= $3 THEN $3 ELSE confirmed_valid_to END,
+            possible_limit_w = CASE WHEN pending_command_id = $4 THEN NULL ELSE possible_limit_w END,
+            possible_valid_to = CASE WHEN pending_command_id = $4 THEN NULL ELSE possible_valid_to END,
+            pending_command_id = CASE WHEN pending_command_id = $4 THEN NULL ELSE pending_command_id END
+          WHERE session_id = $1 RETURNING site_id`,
+        [cmd.session_id, cmd.limit_w, cmd.valid_to, commandId],
+      );
+      siteId = rows[0]?.site_id;
+    } else {
+      siteId = (await c.query<{ site_id: string }>('SELECT site_id FROM active_sessions WHERE session_id = $1', [cmd.session_id])).rows[0]?.site_id;
+    }
+    if (!siteId) return undefined;
+    const due = await c.query(
+      'UPDATE sites SET alloc_due_at = now(), alloc_requested_at = coalesce(alloc_requested_at, clock_timestamp()) WHERE site_id = $1 AND alloc_deferred',
+      [siteId],
+    );
+    return due.rowCount ? siteId : undefined;
+  }
+}

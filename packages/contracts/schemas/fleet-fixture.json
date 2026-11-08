@@ -1,0 +1,620 @@
+[
+  {
+    "siteId": "site-0001",
+    "capW": 306000,
+    "stations": [
+      {
+        "stationId": "st-0001-001",
+        "secretSha256": "3a08bdd42ce3a8a30e08b9baba77e0957279daf4c1a46b647f205e24b86a7df3",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-002",
+        "secretSha256": "095e959f36060851295b770de05bda59153d1d7c6dd7677322c0912ad3f3cba5",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-003",
+        "secretSha256": "fedb38fb3620a231a9053e27d72d61a60d2720f1edb061b8e01ef27c7ae7d913",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-004",
+        "secretSha256": "fec83f10a0d2fcf90a855380b20d58ab944a6e31207a71783827dc13a18d7098",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-005",
+        "secretSha256": "9d332dcecca561e219da2338c6f16776728734a90c13ab217d17f74b9aada4a5",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "DC",
+            "maxPowerW": 50000,
+            "minPowerW": 5000,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "DC",
+            "maxPowerW": 50000,
+            "minPowerW": 5000,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-006",
+        "secretSha256": "ef7316ddea1a270d04ae0fafa513ad87297af4f4ebea766ed7e11f444050ead1",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-007",
+        "secretSha256": "03d88c9eaa45a9a97cc2d2eb4ee4768b78fb046a241dcca83e69edac870c8c86",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-008",
+        "secretSha256": "266ce9adcada7f1d93cea88b80a19aba6b6b414edb621bc9ccee0f8ac11579a9",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-009",
+        "secretSha256": "44e98a56a281ba410925477746b3c7f2e3236b866d5fedb43e2570741fd961c0",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0001-010",
+        "secretSha256": "144176a29de085526e13adca3258bd5f288b3ecc5aa4b8d6d99cc378ff9fbfc8",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "DC",
+            "maxPowerW": 75000,
+            "minPowerW": 5000,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "DC",
+            "maxPowerW": 75000,
+            "minPowerW": 5000,
+            "tariffId": "tou"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "siteId": "site-0002",
+    "capW": 428000,
+    "stations": [
+      {
+        "stationId": "st-0002-001",
+        "secretSha256": "5a2bcd697308449a3089f6b3db979a90596bbac89854991f9a279eba6981abb5",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-002",
+        "secretSha256": "96c2b7f104f66d672cc0eaa46ddbfec8026a45a02778d32aed944a65d580b73e",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-003",
+        "secretSha256": "125fcf2920196532e274e566ee837489c833afb2c1f8fafba53376192594c894",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-004",
+        "secretSha256": "d51b4bd025374ea50480497c6c8001a767ce8ff8f6dc7f358a2fc0241aefbfb2",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-005",
+        "secretSha256": "ee49f412346698ee179a973ef3f899bdb095087bfeb67a9f5128851f607f9718",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "DC",
+            "maxPowerW": 100000,
+            "minPowerW": 5000,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "DC",
+            "maxPowerW": 100000,
+            "minPowerW": 5000,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-006",
+        "secretSha256": "c4f1d908ee97932d988cf2bb6758da0e9350d39a9918371d6bf0f45734419534",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-007",
+        "secretSha256": "addad0f7514bea4ab2c4ed0d615862ce42959681d0038b470adc081dd0cd106a",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-008",
+        "secretSha256": "7ed0de1eedd1cb0fa051043734446a5162cac8851abc4d12470aba43f6557653",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-009",
+        "secretSha256": "09407cdcc1c0c3cf9d75f92b214bc91330ff7f462ab4d88c427a6a5ea6b917d3",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0002-010",
+        "secretSha256": "5ba57719d121d98cc5aaeed2a6af46f3359880b5930006e84d20f3af1a176370",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "DC",
+            "maxPowerW": 150000,
+            "minPowerW": 5000,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "DC",
+            "maxPowerW": 150000,
+            "minPowerW": 5000,
+            "tariffId": "std"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "siteId": "site-0003",
+    "capW": 250000,
+    "stations": [
+      {
+        "stationId": "st-0003-001",
+        "secretSha256": "274a23d641159a1ee0c2a369621cb5b478c9454f86d0548d8205b5d9cf75dc00",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-002",
+        "secretSha256": "d1af065b4dcf2d2e024c05d03fabd978236c7c2d69f632a4d246f360167a1ac2",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-003",
+        "secretSha256": "170f14544ca9fd600a5a76d9ca7987148e7e2f830dff87597cf625c8ade47c43",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-004",
+        "secretSha256": "480bb5a72b42a70a6553ed50397a928f3ca236c1bd1d5212570bfb9f0a3e8559",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-005",
+        "secretSha256": "df8e9b2925efef91dcef3afc4a32bbe461984640c616fca86871f6a242419ec8",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "DC",
+            "maxPowerW": 50000,
+            "minPowerW": 5000,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "DC",
+            "maxPowerW": 50000,
+            "minPowerW": 5000,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-006",
+        "secretSha256": "b6a9051edf9d5ed59849affb552250245d6d0ce56fdf44ce183f3e5061735daa",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-007",
+        "secretSha256": "0244027ead129adbd4b12a9f5cdebc4fb9ba3268f39277831ec0fb21c45771cd",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-008",
+        "secretSha256": "d63d97fdfe46eaac65165d03ca7446afee2001db76412fccec4264aeb83cd18c",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 22000,
+            "minPowerW": 4140,
+            "tariffId": "tou"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-009",
+        "secretSha256": "a5046cd4d313612fe2e86bec7ca6ed6cfe91c8c1e2cd740cd144f39171ff3ab4",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "fleet"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "AC",
+            "maxPowerW": 11000,
+            "minPowerW": 4140,
+            "tariffId": "std"
+          }
+        ]
+      },
+      {
+        "stationId": "st-0003-010",
+        "secretSha256": "d6a0a8b67453684b1ecef09ed72aa75829cebb6f85bc303ceade1ceda416246a",
+        "connectors": [
+          {
+            "connectorId": 1,
+            "currentType": "DC",
+            "maxPowerW": 75000,
+            "minPowerW": 5000,
+            "tariffId": "tou"
+          },
+          {
+            "connectorId": 2,
+            "currentType": "DC",
+            "maxPowerW": 75000,
+            "minPowerW": 5000,
+            "tariffId": "fleet"
+          }
+        ]
+      }
+    ]
+  }
+]

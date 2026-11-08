@@ -120,6 +120,8 @@ export const AllocateReq = z.object({
   idleConnectors: z.number().int().min(0),
   /** chargingDefaults.startW for this site. */
   startW: z.number().int().min(0),
+  /** reference time for the 60 s measured-demand rule; makes the answer a pure function of the request (default: server clock). */
+  computedAt: ts.optional(),
   sessions: z.array(
     z.object({
       sessionId: uuid,

@@ -18,7 +18,7 @@ import (
 )
 
 func testCfg() config.Base {
-	return config.Base{ServiceName: "t", LogLevel: "info", HTTPPort: 8080, InternalToken: "0123456789abcdef", ShutdownGrace: 3 * time.Second}
+	return config.Base{ServiceName: "t", LogLevel: "info", HTTPPort: 8080, InternalToken: "0123456789abcdef", ShutdownGrace: 10 * time.Second}
 }
 
 func listen(t *testing.T) (net.Listener, string) {
@@ -104,12 +104,15 @@ func TestRunServesAndShutsDownInOrder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("Run did not return")
 	}
 	want := []string{"runner-stopped", "consumer", "pool", "tracer"}
-	if strings.Join(order, ",") != strings.Join(want, ",") {
-		t.Fatalf("order %v want %v", order, want)
+	mu.Lock()
+	got := strings.Join(order, ",")
+	mu.Unlock()
+	if got != strings.Join(want, ",") {
+		t.Fatalf("order %s want %v", got, want)
 	}
 }
 

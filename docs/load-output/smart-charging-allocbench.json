@@ -1,0 +1,82 @@
+{
+  "tool": "services/smart-charging/cmd/allocbench",
+  "startedAt": "2026-11-08T07:57:58.057621Z",
+  "goVersion": "go1.27.3",
+  "platform": "darwin/arm64",
+  "clientNumCPU": 8,
+  "options": {
+    "url": "http://127.0.0.1:38184",
+    "sites": 2000,
+    "seed": 20261108,
+    "concurrency": 16,
+    "ratePerSec": 1000,
+    "durationSec": 30,
+    "warmupSec": 3,
+    "targetsFile": "../../load/targets.json"
+  },
+  "siteShape": {
+    "connectorsMin": 10,
+    "connectorsMax": 80,
+    "sessionsMean": 15.37,
+    "sessionsMax": 48,
+    "bodyBytesMean": 3149.1405,
+    "suspendedShareOfSessions": 0.0004229017566688354,
+    "capBindingShareOfSites": 0.1475
+  },
+  "target": {
+    "allocationsPerSec": 1000,
+    "p99Ms": 20,
+    "source": "load/targets.json"
+  },
+  "scenarios": [
+    {
+      "name": "saturation-c16",
+      "mode": "closed-loop",
+      "concurrency": 16,
+      "durationSec": 30.002098167,
+      "requests": 315238,
+      "ok": 315238,
+      "errors": {},
+      "clientInvariantViolations": 0,
+      "allocationsPerSec": 10507.19847143016,
+      "sessionsPerSec": 161497.405049138,
+      "latencyMs": {
+        "p50": 0.917,
+        "p90": 3.011,
+        "p95": 4.405,
+        "p99": 9.765,
+        "p999": 29.969,
+        "max": 317.776,
+        "mean": 1.503
+      },
+      "meetsTarget": true
+    },
+    {
+      "name": "fixed-rate-1000",
+      "mode": "open-loop",
+      "targetRatePerSec": 1000,
+      "durationSec": 29.999441625,
+      "requests": 30000,
+      "ok": 30000,
+      "errors": {},
+      "clientInvariantViolations": 0,
+      "allocationsPerSec": 1000.0186128464317,
+      "sessionsPerSec": 15370.286079449654,
+      "latencyMs": {
+        "p50": 0.599,
+        "p90": 3.32,
+        "p95": 5.894,
+        "p99": 19.45,
+        "p999": 55.849,
+        "max": 76.12,
+        "mean": 1.653
+      },
+      "meetsTarget": true
+    }
+  ],
+  "serverMetrics": {
+    "invariant_violations_total": "0",
+    "allocations_total_ok": "408642"
+  },
+  "note": "client and server on the same machine; latency is client-observed end to end over HTTP/1.1 keep-alive"
+}

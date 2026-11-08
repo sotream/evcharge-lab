@@ -3,4 +3,8 @@ go 1.27
 use (
 	./packages/contracts-go
 	./packages/platform-go
+	./scripts/backfill-telemetry
+	./services/smart-charging
+	./services/tariff
+	./services/telemetry-ingest
 )

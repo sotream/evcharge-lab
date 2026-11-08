@@ -47,6 +47,12 @@ export const RedisKeys = {
   gatewayInstances: 'gw:instances',
   /** HASH latest power per connector: {w, ts}; written by telemetry-ingest. */
   connectorPower: (stationId: string, connectorId: number) => `power:${stationId}:${connectorId}`,
+  /**
+   * STRING epoch ms: latest validTo of any allocation profile that may be in force at the site (ADR 0006).
+   * Written by sessions before a round commits (only raised); the gateway applies the safe share only
+   * when now > value + ALLOCATION_GRACE_S. Missing key: never raise (stations stay at startW).
+   */
+  siteAllocationValidTo: (siteId: string) => `alloc:site:${siteId}`,
   /** STRING JSON of SessionsInternal.stationCredential; TTL 5m. */
   stationCredential: (stationId: string) => `cred:station:${stationId}`,
 } as const;

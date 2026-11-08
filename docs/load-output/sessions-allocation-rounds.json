@@ -1,0 +1,16 @@
+{
+  "measured": {
+    "sites": 5000,
+    "activeSessions": 15000,
+    "instances": 2,
+    "concurrencyPerInstance": 8,
+    "elapsedSeconds": 7.315,
+    "roundsPerSecond": 683.5269993164729,
+    "allocatorCalls": 5000,
+    "setChargingProfileCommands": 15000,
+    "backlogGaugeSecondsLastSample": 6.28689
+  },
+  "budgetSeconds": 60,
+  "note": "stub allocator on localhost, Postgres/Redis on the compose infra, workers off (no outbox relay); wall clock from start() to every site having completed a round",
+  "measuredAt": "2026-11-08T08:23:07.354Z"
+}
