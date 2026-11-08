@@ -229,9 +229,9 @@ Every item below was found during this build by a code review, a load test or a 
 | 3 | Gateway safe share could exceed the cap, and one profile id was shared by all connectors | review | [details](#finding-3) |
 | 4 | Invoices lost after a short Postgres outage | review | [details](#finding-4) |
 | 5 | The outbox broke per-key event order with two replicas | review | [details](#finding-5) |
-| 6 | `NOTIFY` serialised every commit | k6 | [details](#finding-6) |
-| 7 | Concurrent `StartTransaction` on one connector returned 500 | k6 | [details](#finding-7) |
-| 8 | `/v1/sites` returned 429,276 bytes per call | k6 | [details](#finding-8) |
+| 6 | <code>NOTIFY</code> serialised every commit | k6 | [details](#finding-6) |
+| 7 | Concurrent <code>StartTransaction</code> on one connector returned 500 | k6 | [details](#finding-7) |
+| 8 | <code>/v1/sites</code> returned 429,276 bytes per call | k6 | [details](#finding-8) |
 | 9 | Memory pressure in the lab VM | k6 | [details](#finding-9) |
 | 10 | Fleet convention drift between generators | review | [details](#finding-10) |
 | 11 | Billing under-collected totals above the hold and could strand a charge | review | [details](#finding-11) |
@@ -305,7 +305,7 @@ Every item below was found during this build by a code review, a load test or a 
 </details>
 
 <details id="finding-6">
-<summary>6. `NOTIFY` serialised every commit</summary>
+<summary>6. <code>NOTIFY</code> serialised every commit</summary>
 
 - **Found by:** a k6 sessions run, then traces and `pg_stat_activity`.
 - **Symptom (observed, not saved as a file):** `COMMIT` waiting on `Lock:object`, connection pool exhaustion ("timeout exceeded when trying to connect"), and the OCPP hot path at multi-second p99.
@@ -316,7 +316,7 @@ Every item below was found during this build by a code review, a load test or a 
 </details>
 
 <details id="finding-7">
-<summary>7. Concurrent `StartTransaction` on one connector returned 500</summary>
+<summary>7. Concurrent <code>StartTransaction</code> on one connector returned 500</summary>
 
 - **Found by:** a k6 sessions run. The error (unique violation `active_sessions_connector_pk_key`) was observed in the k6 output and not saved as a file.
 - **Cause:** two transactions raced to insert the active session of one connector.
@@ -326,7 +326,7 @@ Every item below was found during this build by a code review, a load test or a 
 </details>
 
 <details id="finding-8">
-<summary>8. `/v1/sites` returned 429,276 bytes per call</summary>
+<summary>8. <code>/v1/sites</code> returned 429,276 bytes per call</summary>
 
 - **Found by:** the k6 driver-api run.
 - **Symptom (observed, not saved as a file):** 429,276 bytes per call for 146 sites and 1,460 stations, which capped driver-api reads at about 527 RPS.
