@@ -88,7 +88,7 @@ services:
 
   # Telemetry: separate instance so its WAL/IO and relaxed durability never touch OLTP (ADR 0008).
   postgres-telemetry:
-    image: timescale/timescaledb:2.24.0-pg18
+    image: timescale/timescaledb:2.31.0-pg18
     environment:
       POSTGRES_USER: evcharge
       POSTGRES_PASSWORD: evcharge
