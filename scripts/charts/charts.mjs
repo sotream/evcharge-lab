@@ -358,7 +358,7 @@ export function smartChargingCap() {
 
 // 8. One timeline per drill ------------------------------------------------------------------------
 export function drillCharts() {
-  return D.drills().flatMap((dr) => { try { return [(() => {
+  return D.drills().filter((dr) => dr.rows.length >= 2).flatMap((dr) => { try { return [(() => {
     const rows = dr.rows, phases = phaseRanges(rows);
     const numeric = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((k) => !['t', 's', 'phase'].includes(k) && rows.some((r) => typeof r[k] === 'number'));
     const groups = [];

@@ -11,9 +11,9 @@ export TEST_REDIS_URL ?= redis://localhost:26379
 export TEST_KAFKA_BROKERS ?= localhost:29091,localhost:29092,localhost:29093
 export INTEGRATION ?= 1
 
-.PHONY: prom-check history-test check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
+.PHONY: charts-test history-test prom-check check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
 
-check: install contracts topics-sync prom-check history-test lint build typecheck test-unit infra-up test-int go-check
+check: install contracts topics-sync prom-check history-test lint build typecheck test-unit charts-test infra-up test-int go-check
 	@echo "✔ make check passed"
 
 install:
@@ -38,6 +38,9 @@ build:
 
 test-unit:
 	pnpm test:unit
+
+charts-test:
+	node --test scripts/charts/
 
 # Integration tests share Redis and Kafka with the compose stack; running app containers would claim the
 # same station routes, so they are stopped first (infra keeps running).
