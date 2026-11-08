@@ -1,0 +1,197 @@
+groups:
+  - name: slo-burn-rate
+    rules:
+      - alert: DriverApiErrorBudgetBurnFast
+        expr: |
+          slo:driver_api_error_ratio:rate1h > 0.0144
+          and
+          slo:driver_api_error_ratio:rate5m > 0.0144
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DriverApi 99.9% SLO: error budget burning at 14.4x (1h and 5m windows)"
+          description: "driver-api 5xx ratio exceeds 14.4 x the 0.001 error budget on both the 1h and 5m windows (Google SRE workbook multiwindow multi-burn-rate)."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: DriverApiErrorBudgetBurnSlow
+        expr: |
+          slo:driver_api_error_ratio:rate6h > 0.006
+          and
+          slo:driver_api_error_ratio:rate30m > 0.006
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DriverApi 99.9% SLO: error budget burning at 6x (6h and 30m windows)"
+          description: "driver-api 5xx ratio exceeds 6 x the 0.001 error budget on both the 6h and 30m windows (Google SRE workbook multiwindow multi-burn-rate)."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: GatewayErrorBudgetBurnFast
+        expr: |
+          slo:gateway_error_ratio:rate1h > 0.0072
+          and
+          slo:gateway_error_ratio:rate5m > 0.0072
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway 99.95% SLO: error budget burning at 14.4x (1h and 5m windows)"
+          description: "gateway CALLERROR ratio exceeds 14.4 x the 0.0005 error budget on both the 1h and 5m windows (Google SRE workbook multiwindow multi-burn-rate)."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: GatewayErrorBudgetBurnSlow
+        expr: |
+          slo:gateway_error_ratio:rate6h > 0.003
+          and
+          slo:gateway_error_ratio:rate30m > 0.003
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway 99.95% SLO: error budget burning at 6x (6h and 30m windows)"
+          description: "gateway CALLERROR ratio exceeds 6 x the 0.0005 error budget on both the 6h and 30m windows (Google SRE workbook multiwindow multi-burn-rate)."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+  - name: slo-invariants
+    rules:
+      - alert: SiteCapExceeded
+        expr: |
+          slo:site_cap_utilisation:max > 1
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A site drew more than its cap (ADR 0000: the cap is never exceeded)"
+          description: "max over sites of sim_site_drawn_watts / sim_site_cap_watts is above 1. Any occurrence is a failure."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: AllocationCapViolationRejected
+        expr: |
+          increase(sessions_allocation_cap_violations_rejected_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "An allocation that would break the site cap was rejected by the invariant guard"
+          description: "An allocation that would break the site cap was rejected by the invariant guard"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: InvariantViolation
+        expr: |
+          increase(invariant_violations_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A platform invariant was violated"
+          description: "A platform invariant was violated"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: AllocationBacklog
+        expr: |
+          max(sessions_allocation_backlog_seconds) > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Allocation rounds fall behind the 60 s period"
+          description: "Allocation rounds fall behind the 60 s period"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+  - name: slo-pipelines
+    rules:
+      - alert: OutboxPublishLagHigh
+        expr: |
+          service:outbox_publish_lag:p99_5m > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox publish lag p99 above 5 s for {{ $labels.service }}"
+          description: "Outbox rows take longer than 5 s from insert to Kafka ack. The broker is down or the relay is stuck."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: OutboxPendingGrowing
+        expr: |
+          sum by (service) (outbox_pending) > 100
+          and
+          deriv(sum by (service) (outbox_pending)[10m:1m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog growing for {{ $labels.service }}"
+          description: "Outbox backlog growing for {{ $labels.service }}"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: DlqMessages
+        expr: |
+          increase(kafka_consumer_messages_total{outcome="dlq"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Records sent to a dead-letter topic by group {{ $labels.group }}"
+          description: "Records sent to a dead-letter topic by group {{ $labels.group }}"
+          runbook: "docs/runbook.md#dead-letter-topics"
+      - alert: TelemetryDeadLettered
+        expr: |
+          increase(telemetry_dead_lettered_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Telemetry records dead-lettered"
+          description: "Telemetry records dead-lettered"
+          runbook: "docs/runbook.md#dead-letter-topics"
+      - alert: KafkaConsumerLagHigh
+        expr: |
+          sum by (group) (kafka_consumer_lag) > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer lag above 10000 records for group {{ $labels.group }}"
+          description: "Uses the application metric kafka_consumer_lag. kafka_consumergroup_lag from kafka-exporter is the independent view."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: KafkaExporterConsumerLagHigh
+        expr: |
+          sum by (consumergroup) (kafka_consumergroup_lag) > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Exporter-measured lag above 10000 records for group {{ $labels.consumergroup }}"
+          description: "Exporter-measured lag above 10000 records for group {{ $labels.consumergroup }}"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: TelemetryDurableLagSloBreach
+        expr: |
+          slo:telemetry_durable:p99_5m > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Telemetry durable lag p99 above the 5 s objective"
+          description: "Durable lag p99 has been above 5 s for 5 minutes, breaking the ADR 0000 telemetry objective."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: TelemetryIngestPaused
+        expr: |
+          max(telemetry_ingest_paused) == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Telemetry ingest paused (backpressure) for 5 minutes"
+          description: "Telemetry ingest paused (backpressure) for 5 minutes"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: BillingSagaParked
+        expr: |
+          increase(billing_sagas_parked_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A billing saga was parked and needs an operator (step {{ $labels.step }})"
+          description: "A billing saga was parked and needs an operator (step {{ $labels.step }})"
+          runbook: "docs/runbook.md#billing-saga-parked"
+      - alert: BillingPspIdempotencyMismatch
+        expr: |
+          increase(billing_psp_idempotency_mismatch_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PSP idempotency key mismatch, money state uncertain (step {{ $labels.step }})"
+          description: "PSP idempotency key mismatch, money state uncertain (step {{ $labels.step }})"
+          runbook: "docs/runbook.md#billing-saga-parked"

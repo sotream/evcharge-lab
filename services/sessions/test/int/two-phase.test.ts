@@ -66,13 +66,20 @@ describe('two-phase profile apply (ADR 0006): a decrease that is never confirmed
     const after = await h.db.pool.query('SELECT limit_w, confirmed_limit_w FROM active_sessions WHERE transaction_id = $1', [a.transactionId]);
     expect(after.rows[0].limit_w).not.toBeNull();
     expect(after.rows[0].confirmed_limit_w).toBe(11_020);
+    const allocated = async () => Number((await h.db.pool.query("SELECT count(*) AS n FROM outbox WHERE payload->>'type' = 'site.power-allocated'")).rows[0].n);
+    const roundsBefore = await allocated();
     await new Promise((r) => setTimeout(r, 600));
     expect(await inForce()).toBeLessThanOrEqual(CAP);
     expect(profilesOf(b.transactionId)).toHaveLength(0);
+    // A non-Accepted result must not re-trigger the site (it would resend the same profiles: a command storm).
+    expect(await allocated()).toBe(roundsBefore);
 
     // The decrease is finally confirmed (a later round re-sends it): the withheld increase is released by the result.
+    // An unconfirmed profile is re-sent once its last send is 30 s old; age it instead of waiting.
+    await h.db.pool.query("UPDATE active_sessions SET limit_sent_at = now() - interval '31 seconds' WHERE transaction_id = $1", [a.transactionId]);
+    const sentBefore = profilesOf(a.transactionId).length;
     await round();
-    const latest = await waitFor(() => profilesOf(a.transactionId).findLast((c) => limitOf(c) === 7580));
+    const latest = await waitFor(() => (profilesOf(a.transactionId).length > sentBefore ? profilesOf(a.transactionId).findLast((c) => limitOf(c) === 7580) : undefined));
     await h.publishCommandResult(latest.data.commandId, 'st-0001-002', 'SetChargingProfile', 'Accepted');
     const bProfile = await waitFor(() => profilesOf(b.transactionId)[0]);
     expect(limitOf(bProfile)).toBe(7580);

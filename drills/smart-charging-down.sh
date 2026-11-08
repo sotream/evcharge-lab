@@ -4,6 +4,7 @@
 # never stops; optimal allocation resumes when the allocator returns.
 set -euo pipefail
 DRILL="smart-charging-down" source "$(dirname "$0")/lib/common.sh"
+require_fleet
 DOWN_S="${DOWN_S:-120}"
 cat > "$OUT/q.json" <<'Q'
 {

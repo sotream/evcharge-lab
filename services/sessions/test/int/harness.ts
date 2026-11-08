@@ -173,6 +173,12 @@ export interface HarnessOptions {
 
 /** Whole service against real Postgres (temp database), Kafka (unique topics), Redis and a stub allocator. */
 export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> {
+  const stamps = new Map<string, string>();
+  const stampFor = (id: string): string => {
+    const s = stamps.get(id) ?? new Date().toISOString();
+    stamps.set(id, s);
+    return s;
+  };
   const db = await tempDatabase();
   const base = uniq('sess').replace(/_/g, '-');
   const topics = { stationEvents: `${base}.station-events`, commandResults: `${base}.command-results`, stationCommands: `${base}.station-commands`, sessionEvents: `${base}.session-events` };
@@ -251,10 +257,11 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
       if (r.status !== 201) throw new Error(`register failed ${r.status} ${JSON.stringify(r.body)}`);
       return { driverId, idTag };
     },
+    // A replayed message is byte-identical (same uniqueId, same payload), so the timestamp is fixed per message id.
     startTx: (stationId, connectorId, idTag, msgId = randomUUID()) =>
-      http('POST', '/internal/ocpp/start-transaction', { body: { stationId, ocppMessageId: msgId, connectorId, idTag, meterStartWh: 1000, timestamp: new Date().toISOString() } }),
+      http('POST', '/internal/ocpp/start-transaction', { body: { stationId, ocppMessageId: msgId, connectorId, idTag, meterStartWh: 1000, timestamp: stampFor(msgId) } }),
     stopTx: (stationId, transactionId, msgId = randomUUID(), meterStopWh = 6000) =>
-      http('POST', '/internal/ocpp/stop-transaction', { body: { stationId, ocppMessageId: msgId, transactionId, meterStopWh, timestamp: new Date().toISOString() } }),
+      http('POST', '/internal/ocpp/stop-transaction', { body: { stationId, ocppMessageId: msgId, transactionId, meterStopWh, timestamp: stampFor(msgId) } }),
     publishStationEvent: async (type, stationId, data, occurredAt) => {
       const env = makeEnvelope(type, stationId, { stationId, ...data }, 'test-gateway', occurredAt ? { occurredAt: new Date(occurredAt) } : undefined);
       await send(topics.stationEvents, stationId, env);

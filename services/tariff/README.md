@@ -35,6 +35,8 @@ target (2,000 quotes/s with p99 under 20 ms):
 - All three files were produced against the service run as a container with `--cpus 2` and
   `DB_MAX_CONNS=8`, with Postgres on the host and the load generator on the same machine.
 - `tariff-quotebench.json` (32 closed-loop clients) and `tariff-quotebench-c8.json` (8 clients) are
-  saturation measurements: they show maximum throughput and the latency under that overload, not
-  the latency at the target rate. The c32 p99 exceeds 20 ms because the clients keep 32 requests
-  in flight against a saturated host.
+  saturation measurements: they show maximum throughput and the latency under that load, not
+  the latency at the target rate. Measured: at concurrency 32 the service reached 14,399.8 quotes/s with p99 7.957 ms,
+  and at concurrency 8 it reached 9,095.7 quotes/s with p99 4.014 ms; both p99 values are inside the 20 ms target
+  (`results[0].latencyMs.p99` in each file, `pass: true`). The open-loop file shows p99 13.898 ms at the offered
+  2,000 quotes/s.

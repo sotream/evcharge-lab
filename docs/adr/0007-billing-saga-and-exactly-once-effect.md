@@ -86,5 +86,7 @@ of invoices equals the number of sessions and that each invoice has one capture.
 
 - Billing has a background worker as well as consumers. Saga state is queryable for the runbook
   (`SELECT state, count(*) FROM billing_sagas GROUP BY 1`).
-- A session completed while tariff is down gets its invoice late, not never. The drill shows the
-  backlog draining.
+- A session completed while tariff is down gets its invoice late, not never. The billing integration test
+  `services/billing/test/int/saga.test.ts` (tariff outage case, "retries with backoff while tariff is down, then invoices
+  and captures once") shows the saga waiting in PRICING and completing after recovery. There is no tariff-down drill in
+  `drills/`.

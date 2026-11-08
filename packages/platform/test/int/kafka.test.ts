@@ -171,3 +171,24 @@ describe('kafka producer + consumer', () => {
     await c2.stop();
   });
 });
+
+describe('kafka consumer without reachable brokers (ADR 0012)', () => {
+  it('start() returns instead of failing the service, reports not ready, and stops cleanly', async () => {
+    const { logger: quiet } = captureLogger('kafka-unreachable', 'error');
+    const c = createConsumer({
+      brokers: ['127.0.0.1:1'],
+      groupId: uniq('unreachable'),
+      topics: ['nowhere.v1'],
+      schema: events.StationConnected,
+      lagIntervalMs: 0,
+      logger: quiet,
+      dlqProducer: createProducer({ brokers: ['127.0.0.1:1'], clientId: uniq('dlq') }),
+      handler: async () => {},
+    });
+    const t0 = Date.now();
+    await c.start(); // must not throw: the service keeps serving what does not need Kafka
+    expect(Date.now() - t0).toBeLessThan(30_000);
+    expect(c.readinessCheck()()).toBe(false);
+    await c.stop();
+  }, 60_000);
+});

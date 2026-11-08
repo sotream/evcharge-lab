@@ -13,6 +13,7 @@ const sitesQuery = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radiusKm: z.coerce.number().positive().max(MAX_RADIUS_KM).default(5),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).default(20), before: z.iso.datetime({ offset: true }).optional() });
 const intId = z.coerce.number().int().min(1).max(2_147_483_647);
@@ -47,8 +48,8 @@ export class DriverController {
 
   @Get('sites')
   sites(@Query() q: unknown) {
-    const { lat, lng, radiusKm } = parse(sitesQuery, q);
-    return this.catalog.listSites(lat, lng, radiusKm);
+    const { lat, lng, radiusKm, limit } = parse(sitesQuery, q);
+    return this.catalog.listSites(lat, lng, radiusKm, limit);
   }
 
   @Post('reservations')

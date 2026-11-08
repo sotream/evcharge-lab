@@ -10,9 +10,9 @@ export TEST_REDIS_URL ?= redis://localhost:26379
 export TEST_KAFKA_BROKERS ?= localhost:29091,localhost:29092,localhost:29093
 export INTEGRATION ?= 1
 
-.PHONY: check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
+.PHONY: prom-check check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
 
-check: install contracts topics-sync lint build typecheck test-unit infra-up test-int go-check
+check: install contracts topics-sync prom-check lint build typecheck test-unit infra-up test-int go-check
 	@echo "✔ make check passed"
 
 install:
@@ -49,6 +49,14 @@ infra-up:
 
 infra-down:
 	docker compose down
+
+# Rule syntax and unit tests run in one-off containers that never touch the compose stack.
+PROMTOOL := docker run --rm -v "$(CURDIR)/infra/prometheus:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.16.0
+PROM_RULES := $(patsubst infra/prometheus/%,/etc/prometheus/%,$(wildcard infra/prometheus/rules/*.yml))
+PROM_TESTS := $(patsubst infra/prometheus/%,/etc/prometheus/%,$(wildcard infra/prometheus/tests/*.yml))
+prom-check:
+	$(PROMTOOL) check rules $(PROM_RULES)
+	$(PROMTOOL) test rules $(PROM_TESTS)
 
 test-int: infra-up
 	pnpm test:int

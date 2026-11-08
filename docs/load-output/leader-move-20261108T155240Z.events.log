@@ -1,0 +1,8 @@
+2026-11-08T15:52:45Z leaders at start: 0=2 1=3 2=1 3=1 4=2 5=3 6=3 7=2 8=1 9=1 10=2 11=3 
+2026-11-08T15:52:45Z topic repro.leader-move.20261108T155240Z created
+2026-11-08T15:53:06Z reassign replica order
+2026-11-08T15:53:13Z PREFERRED election (leadership moves to the new first replica)
+Successfully completed leader election (PREFERRED) for partitions repro.leader-move.20261108T155240Z-10, repro.leader-move.20261108T155240Z-11, repro.leader-move.20261108T155240Z-6, repro.leader-move.20261108T155240Z-7, repro.leader-move.20261108T155240Z-9, repro.leader-move.20261108T155240Z-3, repro.leader-move.20261108T155240Z-4, repro.leader-move.20261108T155240Z-5
+2026-11-08T15:53:18Z leaders now: 0=2 1=3 2=1 3=2 4=3 5=1 6=2 7=3 8=1 9=2 10=3 11=1 
+2026-11-08T15:53:43Z PREFERRED election on all topics (as auto.leader.rebalance does)
+{"sends":3744,"errors":0,"p50":7,"p99":4146,"max":4427,"over1s":483,"errorKinds":[]}

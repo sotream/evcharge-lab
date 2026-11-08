@@ -3,6 +3,10 @@
 name: evcharge
 
 x-node-env: &common-env
+  # 10 % head sampling: 100 % filled the in-memory Jaeger store (1.15 GB) and pushed the 8 GB Docker VM into swap
+  # during load tests. Child spans follow the parent decision, so sampled traces stay complete.
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
   LOG_LEVEL: ${LOG_LEVEL:-info}
   HTTP_PORT: "8080"
   INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
@@ -179,13 +183,56 @@ services:
   # ---------------------------------------------------------------- observability
   jaeger:
     image: jaegertracing/jaeger:2.23.0
+    command: ["--config", "/etc/jaeger/config.yaml"]
+    volumes: ["./infra/jaeger/config.yaml:/etc/jaeger/config.yaml:ro"]
+    mem_limit: 400m
     ports: ["26686:16686", "24318:4318"]
 
   prometheus:
     image: prom/prometheus:v3.16.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=2d", "--web.enable-lifecycle"]
     ports: ["29090:9090"]
-    volumes: ["./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+
+  # Exporters (ADR 0014). Independent views of Kafka consumer lag, Postgres and Redis for dashboards and alerts.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.11.0
+    command: ["--kafka.server=kafka-1:9092", "--kafka.server=kafka-2:9092", "--kafka.server=kafka-3:9092"]
+    mem_limit: 64m
+    ports: ["29308:9308"]
+    depends_on:
+      kafka-1: { condition: service_healthy }
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres:5432/evcharge?sslmode=disable
+    mem_limit: 64m
+    ports: ["29187:9187"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres-telemetry-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres-telemetry:5432/telemetry?sslmode=disable
+    # Per-table collectors walk every hypertable chunk (hundreds) and timed out the scrape; database-level stats suffice.
+    command: ["--no-collector.stat_user_tables", "--no-collector.statio_user_tables"]
+    mem_limit: 128m
+    ports: ["29188:9187"]
+    depends_on:
+      postgres-telemetry: { condition: service_healthy }
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.97.0
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    mem_limit: 64m
+    ports: ["29121:9121"]
+    depends_on:
+      redis: { condition: service_healthy }
 
   grafana:
     image: grafana/grafana:13.3.0
@@ -248,6 +295,8 @@ services:
     image: evcharge/smart-charging:dev
     environment:
       SERVICE_NAME: smart-charging
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
       SHUTDOWN_GRACE: 15s
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_PORT: "8080"
@@ -262,6 +311,8 @@ services:
     depends_on: { postgres: { condition: service_healthy } }
     environment:
       SERVICE_NAME: tariff
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
       SHUTDOWN_GRACE: 15s
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_PORT: "8080"
@@ -296,6 +347,8 @@ services:
       topics-init: { condition: service_completed_successfully }
     environment:
       SERVICE_NAME: telemetry-ingest
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
       SHUTDOWN_GRACE: 15s
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HTTP_PORT: "8080"
@@ -343,6 +396,7 @@ services:
       SIM_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
       SIM_DC_SHARE: "0.2"
       SIM_TIME_SCALE: ${SIM_TIME_SCALE:-1}
+      SIM_METER_INTERVAL_S: ${SIM_METER_INTERVAL_S:-30}
       SIM_DRIVERS: ${SIM_DRIVERS:-50}
       SIM_HTTP_PORT: "8080"
       SIM_PROBE_STATIONS: ${SIM_PROBE_STATIONS:-0}

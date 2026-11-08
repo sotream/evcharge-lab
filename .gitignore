@@ -10,3 +10,6 @@ coverage/
 .worktrees/
 *.tsbuildinfo
 .claude/
+!docs/drill-output/**/*.log
+!docs/load-output/**/*.log
+!docs/load-output/*.log

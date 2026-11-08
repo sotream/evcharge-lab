@@ -1,0 +1,120 @@
+# Recording rules for the SLOs in ADR 0000. ADR 0014 explains every SLI.
+groups:
+  - name: slo-latency
+    interval: 15s
+    rules:
+      # ADR 0000 Remote start (delivered, p99 < 2 s). PROXY: gateway receives the command from Kafka -> station answers RemoteStartTransaction. No metric spans driver tap -> gateway, so the driver-api call, the sessions outbox hop and the Kafka hop are not included.
+      - record: slo:remote_start_delivery:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(gateway_command_duration_seconds_bucket{action="RemoteStartTransaction"}[5m])))
+      - record: slo:remote_start_delivery:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(gateway_command_duration_seconds_bucket{action="RemoteStartTransaction"}[1h])))
+      # ADR 0000 OCPP responses (p99 < 500 ms), for Authorize, StartTransaction and StopTransaction only.
+      - record: slo:ocpp_callresult:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket{action=~"Authorize|StartTransaction|StopTransaction"}[5m])))
+      - record: slo:ocpp_callresult:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket{action=~"Authorize|StartTransaction|StopTransaction"}[1h])))
+      # ADR 0000 Driver API read (p99 < 300 ms): GET minus health, ready, live and metrics routes.
+      - record: slo:driver_api_read:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service="driver-api",method="GET",route!~"/(health.*|ready.*|live.*|metrics)"}[5m])))
+      - record: slo:driver_api_read:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service="driver-api",method="GET",route!~"/(health.*|ready.*|live.*|metrics)"}[1h])))
+      # ADR 0000 Driver API write (p99 < 800 ms): POST, PUT, PATCH, DELETE (login and register are POST, so they count as writes).
+      - record: slo:driver_api_write:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service="driver-api",method=~"POST|PUT|PATCH|DELETE",route!~"/(health.*|ready.*|live.*|metrics)"}[5m])))
+      - record: slo:driver_api_write:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service="driver-api",method=~"POST|PUT|PATCH|DELETE",route!~"/(health.*|ready.*|live.*|metrics)"}[1h])))
+      # ADR 0000 Smart charging reallocation (p99 < 5 s).
+      - record: slo:reallocation:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(sessions_reallocation_latency_seconds_bucket[5m])))
+      - record: slo:reallocation:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(sessions_reallocation_latency_seconds_bucket[1h])))
+      # ADR 0000 Telemetry durable (p99 < 5 s).
+      - record: slo:telemetry_durable:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(telemetry_ingest_lag_seconds_bucket{stage="durable"}[5m])))
+      - record: slo:telemetry_durable:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(telemetry_ingest_lag_seconds_bucket{stage="durable"}[1h])))
+      # ADR 0000 Billing invoice latency (p99 < 5 min).
+      - record: slo:billing_invoice:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(billing_invoice_latency_seconds_bucket[5m])))
+      - record: slo:billing_invoice:p99_1h
+        expr: histogram_quantile(0.99, sum by (le) (rate(billing_invoice_latency_seconds_bucket[1h])))
+      # p99 per service for every HTTP service (Node services and Go services share http_server_requests_seconds).
+      - record: service:http_server_requests:p99_5m
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(http_server_requests_seconds_bucket{route!~"/(health.*|ready.*|live.*|metrics)"}[5m])))
+      - record: service:http_server_requests:p99_1h
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(http_server_requests_seconds_bucket{route!~"/(health.*|ready.*|live.*|metrics)"}[1h])))
+      # p99 OCPP CALLRESULT per action, all gateway instances merged.
+      - record: action:ocpp_call_duration:p99_5m
+        expr: histogram_quantile(0.99, sum by (action, le) (rate(ocpp_call_duration_seconds_bucket[5m])))
+      - record: action:ocpp_call_duration:p99_1h
+        expr: histogram_quantile(0.99, sum by (action, le) (rate(ocpp_call_duration_seconds_bucket[1h])))
+      # Outbox publish lag per service (insert -> Kafka ack).
+      - record: service:outbox_publish_lag:p99_5m
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(outbox_publish_lag_seconds_bucket[5m])))
+      - record: service:outbox_publish_lag:p99_1h
+        expr: histogram_quantile(0.99, sum by (service, le) (rate(outbox_publish_lag_seconds_bucket[1h])))
+
+  - name: slo-availability
+    interval: 15s
+    rules:
+      # driver-api SLI: 5xx / all requests, health and metrics routes excluded. 4xx are client errors and do not count.
+      - record: slo:driver_api_error_ratio:rate5m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{service="driver-api",status=~"5..",route!~"/(health.*|ready.*|live.*|metrics)"}[5m]))
+          /
+          sum(rate(http_server_requests_seconds_count{service="driver-api",route!~"/(health.*|ready.*|live.*|metrics)"}[5m]))
+      - record: slo:driver_api_error_ratio:rate30m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{service="driver-api",status=~"5..",route!~"/(health.*|ready.*|live.*|metrics)"}[30m]))
+          /
+          sum(rate(http_server_requests_seconds_count{service="driver-api",route!~"/(health.*|ready.*|live.*|metrics)"}[30m]))
+      - record: slo:driver_api_error_ratio:rate1h
+        expr: |
+          sum(rate(http_server_requests_seconds_count{service="driver-api",status=~"5..",route!~"/(health.*|ready.*|live.*|metrics)"}[1h]))
+          /
+          sum(rate(http_server_requests_seconds_count{service="driver-api",route!~"/(health.*|ready.*|live.*|metrics)"}[1h]))
+      - record: slo:driver_api_error_ratio:rate6h
+        expr: |
+          sum(rate(http_server_requests_seconds_count{service="driver-api",status=~"5..",route!~"/(health.*|ready.*|live.*|metrics)"}[6h]))
+          /
+          sum(rate(http_server_requests_seconds_count{service="driver-api",route!~"/(health.*|ready.*|live.*|metrics)"}[6h]))
+      # gateway SLI: CALLERROR frames sent / CALL frames received (ocpp_messages_total). Upgrade rejects are recorded separately.
+      - record: slo:gateway_error_ratio:rate5m
+        expr: |
+          sum(rate(ocpp_messages_total{direction="out",type="error"}[5m]))
+          /
+          sum(rate(ocpp_messages_total{direction="in",type="call"}[5m]))
+      - record: slo:gateway_error_ratio:rate30m
+        expr: |
+          sum(rate(ocpp_messages_total{direction="out",type="error"}[30m]))
+          /
+          sum(rate(ocpp_messages_total{direction="in",type="call"}[30m]))
+      - record: slo:gateway_error_ratio:rate1h
+        expr: |
+          sum(rate(ocpp_messages_total{direction="out",type="error"}[1h]))
+          /
+          sum(rate(ocpp_messages_total{direction="in",type="call"}[1h]))
+      - record: slo:gateway_error_ratio:rate6h
+        expr: |
+          sum(rate(ocpp_messages_total{direction="out",type="error"}[6h]))
+          /
+          sum(rate(ocpp_messages_total{direction="in",type="call"}[6h]))
+      - record: slo:gateway_upgrade_reject_ratio:rate5m
+        expr: |
+          sum(rate(gateway_upgrades_total{outcome="rejected"}[5m]))
+          /
+          sum(rate(gateway_upgrades_total[5m]))
+      - record: slo:gateway_upgrade_reject_ratio:rate1h
+        expr: |
+          sum(rate(gateway_upgrades_total{outcome="rejected"}[1h]))
+          /
+          sum(rate(gateway_upgrades_total[1h]))
+
+  - name: slo-saturation
+    interval: 15s
+    rules:
+      # ADR 0000 Smart charging: site power cap never exceeded. Ratio > 1 means exceeded.
+      - record: slo:site_cap_utilisation:max
+        expr: max(sim_site_drawn_watts / sim_site_cap_watts)
+      - record: group:kafka_consumer_lag:sum
+        expr: sum by (group) (kafka_consumer_lag)

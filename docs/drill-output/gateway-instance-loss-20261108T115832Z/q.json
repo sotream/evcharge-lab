@@ -1,0 +1,8 @@
+{
+  "connected_gw1": "sum(gateway_connected_stations{gateway=\"gw-1\"})",
+  "connected_gw2": "sum(gateway_connected_stations{gateway=\"gw-2\"})",
+  "sim_connected": "sum(sim_connected_stations)",
+  "sim_reconnects_per_s": "sum(rate(sim_reconnect_attempts_total[10s]))",
+  "upgrades_rejected_per_s": "sum(rate(gateway_upgrades_total{outcome!=\"accepted\"}[10s]))",
+  "callresult_p99_s": "histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket[30s])))"
+}

@@ -130,11 +130,19 @@ describe('profile sending rules (ADR 0006: delta >= max(2 %, 200 W), or within 6
     expect(plan.send).toMatchObject([{ limitW: 8000, kind: 'increase' }]);
   });
 
-  it('a >= 200 W change re-sends the whole site (profiles share one validTo)', () => {
+  it('a >= 200 W change re-sends only the session that changed (per-session sends)', () => {
     const s = stableSite();
     const plan = planProfiles(s, alloc(s, (i) => (i === 0 ? 10_300 : 10_000)), now);
     expect(plan.reason).toBe('changed');
-    expect(plan.send).toHaveLength(2);
+    expect(plan.send).toHaveLength(1);
+    expect(plan.send[0]?.limitW).toBe(10_300);
+  });
+
+  it('retries an unconfirmed profile, but only once its last send is 30 s old', () => {
+    const fresh = site([session(1, { limitW: 10_000, limitValidTo: validTo(170), confirmedW: 7_000, confirmedValidTo: validTo(170), limitSentAt: new Date(now.getTime() - 5_000) })], 100_000);
+    expect(planProfiles(fresh, alloc(fresh, 10_000), now).reason).toBeUndefined();
+    const stale = site([session(1, { limitW: 10_000, limitValidTo: validTo(150), confirmedW: 7_000, confirmedValidTo: validTo(150), limitSentAt: new Date(now.getTime() - 31_000) })], 100_000);
+    expect(planProfiles(stale, alloc(stale, 10_000), now)).toMatchObject({ reason: 'retry', send: [{ limitW: 10_000 }] });
   });
 
   it('refreshes when a profile is within 60 s of validTo', () => {

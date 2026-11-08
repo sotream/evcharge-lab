@@ -1,0 +1,193 @@
+{
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "p(50)",
+      "p(95)",
+      "p(99)",
+      "max"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 77666.942119
+  },
+  "metrics": {
+    "ocpp_ticks_skipped_outstanding_call": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 31259,
+        "rate": 402.47496743344783
+      }
+    },
+    "ws_session_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(99)": 71863.44303591999,
+        "max": 72954.9232,
+        "avg": 63905.20795842898,
+        "p(50)": 63409.585362,
+        "p(95)": 69877.50854175
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(50)": 67547.5230095,
+        "p(95)": 76895.20504715001,
+        "p(99)": 77544.41832617,
+        "max": 77637.96216,
+        "avg": 67907.14701487035
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 13251619,
+        "rate": 170621.09873845798
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 7025791,
+        "rate": 90460.50749925496
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 2000,
+        "rate": 25.750981633030346
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 25,
+        "min": 25,
+        "max": 2000
+      }
+    },
+    "ocpp_callerrors": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 0,
+        "rate": 0
+      },
+      "thresholds": {
+        "count<1": {
+          "ok": true
+        }
+      }
+    },
+    "ws_msgs_sent": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 91243,
+        "rate": 1174.798408571294
+      }
+    },
+    "ocpp_callresults": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 88465,
+        "rate": 1139.0302950830148
+      },
+      "thresholds": {
+        "rate>=2000": {
+          "ok": false
+        }
+      }
+    },
+    "ws_msgs_received": {
+      "contains": "default",
+      "values": {
+        "count": 90465,
+        "rate": 1164.781276716045
+      },
+      "type": "counter"
+    },
+    "checks": {
+      "contains": "default",
+      "values": {
+        "fails": 0,
+        "rate": 1,
+        "passes": 2000
+      },
+      "type": "rate"
+    },
+    "ocpp_callresult_ms": {
+      "contains": "time",
+      "values": {
+        "p(50)": 137,
+        "p(95)": 1994,
+        "p(99)": 3228,
+        "max": 3568,
+        "avg": 601.7835302096875
+      },
+      "thresholds": {
+        "p(99)<500": {
+          "ok": false
+        }
+      },
+      "type": "trend"
+    },
+    "ws_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 3899.742927094999,
+        "p(50)": 3404.8827305,
+        "p(95)": 9875.821204349997,
+        "p(99)": 11859.74191135,
+        "max": 12952.894047
+      }
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 2000,
+        "min": 2000,
+        "max": 2000
+      }
+    },
+    "ws_sessions": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 2000,
+        "rate": 25.750981633030346
+      }
+    }
+  },
+  "root_group": {
+    "checks": [
+      {
+        "name": "upgrade 101",
+        "path": "::upgrade 101",
+        "id": "2a9258f30dbb204e44fec857a124cd69",
+        "passes": 2000,
+        "fails": 0
+      }
+    ],
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": []
+  }
+}

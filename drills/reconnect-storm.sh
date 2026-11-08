@@ -4,6 +4,7 @@
 # and the fleet must be back within 60 s (ADR 0000 gateway SLO).
 set -euo pipefail
 DRILL="reconnect-storm" source "$(dirname "$0")/lib/common.sh"
+require_fleet
 cat > "$OUT/q.json" <<'Q'
 {
   "sim_connected": "sum(sim_connected_stations)",

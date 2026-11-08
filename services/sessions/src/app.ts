@@ -124,6 +124,9 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
   const workers = opts.workers ?? config.WORKERS_ENABLED;
 
   const pool = createPgPool(config.DATABASE_URL, { max: config.PG_POOL_MAX, applicationName: config.SERVICE_NAME, logger });
+  // Bulkhead: allocation rounds (one per start/stop plus periodic) get their own pool, so a burst of rounds can never
+  // starve the OCPP hot path (CALLRESULT p99 < 500 ms, ADR 0000). Found by the sessions k6 run (pool waits of ~0.8 s).
+  const allocationPool = createPgPool(config.DATABASE_URL, { max: config.ALLOCATION_PG_POOL_MAX, applicationName: `${config.SERVICE_NAME}-allocation`, logger });
   await runMigrations(pool, join(__dirname, '..', 'migrations'), { logger });
   await ensurePartitions(pool);
   await seedCatalogIfEmpty(
@@ -147,7 +150,7 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
   const ocpp = new OcppService(pool, topics, signal, logger, config.ACCEPT_UNKNOWN_IDTAGS);
   const drivers = new DriverService(pool, topics);
   const catalog = new CatalogService(pool);
-  const allocation = new AllocationService(pool, redis, allocator, topics, { periodS: config.ALLOCATION_PERIOD_S, tickMs: config.ALLOCATION_TICK_MS, concurrency: config.ALLOCATION_CONCURRENCY }, logger, signal);
+  const allocation = new AllocationService(allocationPool, redis, allocator, topics, { periodS: config.ALLOCATION_PERIOD_S, tickMs: config.ALLOCATION_TICK_MS, concurrency: config.ALLOCATION_CONCURRENCY }, logger, signal);
   const handlers = new StationEventHandlers(pool, topics, logger, signal);
   const maintenance = new Maintenance(pool, topics, config.SWEEPER_INTERVAL_MS, logger);
   const relay = new OutboxRelay({ pool, producer, logger });
@@ -166,6 +169,7 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
     // Hooks run in reverse registration order: these connections close last.
     onShutdown: [
       { name: 'pg', run: () => pool.end() },
+      { name: 'pg-allocation', run: () => allocationPool.end() },
       { name: 'redis', run: () => closeRedis(redis) },
       { name: 'kafka-producer', run: () => producer.close() },
     ],

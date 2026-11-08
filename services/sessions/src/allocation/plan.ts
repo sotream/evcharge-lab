@@ -7,6 +7,8 @@ import { api, fleet, ocpp } from '@evcharge/contracts';
 export const VALIDITY_S = ocpp.ChargingProfiles.ALLOCATION_VALIDITY_S;
 /** Refresh profiles this long before their validTo (ADR 0006). */
 export const REFRESH_BEFORE_S = 60;
+/** Minimum age before an unconfirmed profile is sent again. */
+export const RESEND_UNCONFIRMED_S = 30;
 export const MIN_CHANGE_W = 200;
 export const MIN_CHANGE_RATIO = 0.02;
 
@@ -22,6 +24,8 @@ export interface ActiveSession {
   /** Last limit sent to the station (confirmed or not), null if none yet (station runs at startW). */
   limitW: number | null;
   limitValidTo: Date | null;
+  /** When the current limit was last sent (null before the first send). */
+  limitSentAt?: Date | null;
   /** Limit the station confirmed (SetChargingProfile Accepted) and its validTo. */
   confirmedW: number | null;
   confirmedValidTo: Date | null;
@@ -127,7 +131,7 @@ export function inForceW(s: ActiveSession, now: Date, startW: number, safeShareW
   return w;
 }
 
-export type SendReason = 'new' | 'changed' | 'refresh' | 'safety';
+export type SendReason = 'new' | 'changed' | 'refresh' | 'retry' | 'safety';
 export interface ProfileSend {
   session: ActiveSession;
   limitW: number;
@@ -158,6 +162,13 @@ export interface ProfilePlan {
 export function planProfiles(site: SiteState, allocation: Allocation, now: Date): ProfilePlan {
   const { startW, safeShareW, reserveW } = siteDefaults(site);
   const target = (s: ActiveSession) => allocation.limits.get(s.sessionId) ?? startW;
+  // Per session, not per site: a site-level trigger used to resend every session's profile, so one start or one result
+  // cost one command per session at the site (measured: 17 refresh profiles/s for 73 sessions). A session is sent only
+  // if it has no profile yet, its target moved by max(2 %, 200 W), its profile is near expiry, or the site is unsafe.
+  const nearExpiry = (s: ActiveSession) => s.limitValidTo !== null && s.limitValidTo.getTime() - now.getTime() <= REFRESH_BEFORE_S * 1000;
+  // A sent profile that is still unconfirmed (lost command, station offline) is retried, but at most every 30 s.
+  const unconfirmed = (s: ActiveSession) => s.confirmedW !== s.limitW && (!s.limitSentAt || now.getTime() - s.limitSentAt.getTime() >= RESEND_UNCONFIRMED_S * 1000);
+  const needs = (s: ActiveSession, t: number) => s.limitW === null || !s.limitValidTo || nearExpiry(s) || significantChange(s.limitW, t) || unconfirmed(s);
   let reason: SendReason | undefined;
   let sumInForce = 0;
   const cur = new Map<string, number>();
@@ -170,16 +181,19 @@ export function planProfiles(site: SiteState, allocation: Allocation, now: Date)
       if (significantChange(startW, t)) reason ??= 'new';
     } else if (s.limitValidTo.getTime() - now.getTime() <= REFRESH_BEFORE_S * 1000) reason = reason === 'new' || reason === 'changed' ? reason : 'refresh';
     else if (significantChange(s.limitW, t)) reason = reason === 'new' ? reason : 'changed';
+    else if (unconfirmed(s)) reason ??= 'retry';
   }
   if (!reason && sumInForce + reserveW > site.capW) reason = 'safety';
   if (!reason) return { reason, send: [], deferred: 0 };
 
   let headroom = site.capW - reserveW - sumInForce;
+  const unsafe = reason === 'safety';
   const send: ProfileSend[] = [];
   const increases: { session: ActiveSession; limitW: number; delta: number }[] = [];
   for (const s of site.sessions) {
     const t = target(s);
     const c = cur.get(s.sessionId) as number;
+    if (!unsafe && !needs(s, t)) continue;
     if (t < c) send.push({ session: s, limitW: t, kind: 'decrease' });
     else if (t === c) {
       if (s.limitW !== null) send.push({ session: s, limitW: t, kind: 'refresh' });

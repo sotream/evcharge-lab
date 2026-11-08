@@ -1,0 +1,193 @@
+{
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [],
+    "checks": [
+        {
+          "name": "upgrade 101",
+          "path": "::upgrade 101",
+          "id": "2a9258f30dbb204e44fec857a124cd69",
+          "passes": 1000,
+          "fails": 0
+        }
+      ]
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "p(50)",
+      "p(95)",
+      "p(99)",
+      "max"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 64576.637988
+  },
+  "metrics": {
+    "ws_msgs_received": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 59783,
+        "rate": 925.7682323305406
+      }
+    },
+    "ws_session_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 60813.525485,
+        "avg": 60433.31503997798,
+        "p(50)": 60420.7781315,
+        "p(95)": 60770.814806149996,
+        "p(99)": 60806.57065141
+      }
+    },
+    "ocpp_callerrors": {
+      "values": {
+        "count": 0,
+        "rate": 0
+      },
+      "thresholds": {
+        "count<1": {
+          "ok": true
+        }
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 1000,
+        "fails": 0
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(50)": 62349.875174500005,
+        "p(95)": 64023.61905045,
+        "p(99)": 64540.656808249994,
+        "max": 64546.050737,
+        "avg": 62433.2013279269
+      }
+    },
+    "ws_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(50)": 418.73141699999996,
+        "p(95)": 769.10535655,
+        "p(99)": 803.9471128399999,
+        "max": 812.270042,
+        "avg": 430.7682220159999
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 166,
+        "min": 166,
+        "max": 1000
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 8649919,
+        "rate": 133948.1160602907
+      }
+    },
+    "ws_msgs_sent": {
+      "values": {
+        "count": 59973,
+        "rate": 928.7104728360823
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "ocpp_callresult_ms": {
+      "values": {
+        "p(50)": 9,
+        "p(95)": 485,
+        "p(99)": 1446,
+        "max": 1886,
+        "avg": 92.29076433662793
+      },
+      "thresholds": {
+        "p(99)<500": {
+          "ok": false
+        }
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "ocpp_callresults": {
+      "contains": "default",
+      "values": {
+        "count": 58783,
+        "rate": 910.282755985584
+      },
+      "thresholds": {
+        "rate>=2000": {
+          "ok": false
+        }
+      },
+      "type": "counter"
+    },
+    "ocpp_ticks_skipped_outstanding_call": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 1222,
+        "rate": 18.92325209353697
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 1000,
+        "rate": 15.485476344956604
+      }
+    },
+    "ws_sessions": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 1000,
+        "rate": 15.485476344956604
+      }
+    },
+    "vus_max": {
+      "contains": "default",
+      "values": {
+        "max": 1000,
+        "value": 1000,
+        "min": 1000
+      },
+      "type": "gauge"
+    },
+    "data_received": {
+      "values": {
+        "count": 4480601,
+        "rate": 69384.2407966889
+      },
+      "type": "counter",
+      "contains": "data"
+    }
+  }
+}

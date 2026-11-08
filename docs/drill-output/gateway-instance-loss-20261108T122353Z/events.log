@@ -1,0 +1,35 @@
+2026-11-08T12:23:54Z fleet size 200
+2026-11-08T12:23:54Z sampler pid 86431
+2026-11-08T12:24:24Z PHASE during
+2026-11-08T12:24:24Z RUN docker compose kill -s SIGKILL station-gateway-1
+ Container evcharge-station-gateway-1-1 Killing 
+ Container evcharge-station-gateway-1-1 Killed 
+2026-11-08T12:24:55Z OK all 200 stations connected to gw-2 after 31 s
+2026-11-08T12:24:55Z CHECK stations_reconnected_within_s measured=31 le 60 pass=true
+2026-11-08T12:24:56Z CHECK routes_present_after_loss measured=200 ge 200 pass=true
+2026-11-08T12:24:56Z PHASE after
+2026-11-08T12:24:56Z RUN docker compose start station-gateway-1
+ Container evcharge-kafka-2-1 Waiting 
+ Container evcharge-kafka-3-1 Waiting 
+ Container evcharge-kafka-1-1 Waiting 
+ Container evcharge-kafka-3-1 Healthy 
+ Container evcharge-kafka-1-1 Healthy 
+ Container evcharge-kafka-2-1 Healthy 
+ Container evcharge-topics-init-1 Starting 
+ Container evcharge-topics-init-1 Started 
+ Container evcharge-kafka-1-1 Waiting 
+ Container evcharge-kafka-2-1 Waiting 
+ Container evcharge-kafka-3-1 Waiting 
+ Container evcharge-topics-init-1 Waiting 
+ Container evcharge-postgres-1 Waiting 
+ Container evcharge-redis-1 Waiting 
+ Container evcharge-kafka-1-1 Healthy 
+ Container evcharge-postgres-1 Healthy 
+ Container evcharge-redis-1 Healthy 
+ Container evcharge-kafka-2-1 Healthy 
+ Container evcharge-kafka-3-1 Healthy 
+ Container evcharge-topics-init-1 Exited 
+ Container evcharge-station-gateway-1-1 Starting 
+ Container evcharge-station-gateway-1-1 Started 
+2026-11-08T12:26:38Z CHECK fleet_connected_after_recovery measured=200 ge 200 pass=true
+2026-11-08T12:26:38Z RESULT pass=true -> docs/drill-output/gateway-instance-loss-20261108T122353Z/result.json

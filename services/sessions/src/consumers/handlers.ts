@@ -123,7 +123,7 @@ export class StationEventHandlers {
    * SetChargingProfile outcome (ADR 0006 two-phase apply). Accepted: the station applies exactly what was sent, so it
    * becomes the confirmed limit; commands to one station are ordered, so if this was the latest one nothing
    * unconfirmed remains. Any other outcome never lowers what we assume is in force: the previous limits stay
-   * counted until their validTo. A site that withheld increases is re-triggered (returns its id to kick).
+   * counted until their validTo. A site that withheld increases is re-triggered on Accepted only (returns its id to kick).
    */
   private async profileResult(
     c: Parameters<Parameters<typeof withTx>[1]>[0],
@@ -145,14 +145,20 @@ export class StationEventHandlers {
         [cmd.session_id, cmd.limit_w, cmd.valid_to, commandId],
       );
       siteId = rows[0]?.site_id;
-    } else {
-      siteId = (await c.query<{ site_id: string }>('SELECT site_id FROM active_sessions WHERE session_id = $1', [cmd.session_id])).rows[0]?.site_id;
     }
+    // Only an Accepted result changes what is in force, so only it can free headroom for withheld increases. Re-running
+    // the round on StationOffline/Timeout/Rejected would resend the same profiles to a station that cannot take them,
+    // a command storm (seen with the fleet offline). Those sites are retried by the periodic round instead.
     if (!siteId) return undefined;
-    const due = await c.query(
-      'UPDATE sites SET alloc_due_at = now(), alloc_requested_at = coalesce(alloc_requested_at, clock_timestamp()) WHERE site_id = $1 AND alloc_deferred',
+    // Debounced, not kicked: every Accepted result of a round used to trigger its own round at once, and a round that
+    // sends new profiles produces new results, a self-sustaining loop (measured: about 140 SetChargingProfile/s for 20
+    // sites). The site becomes due in 2 s, so a round's results share one rerun, picked up by the periodic tick.
+    // Starts and stops still kick immediately (reallocation p99 < 5 s, ADR 0000).
+    await c.query(
+      `UPDATE sites SET alloc_due_at = LEAST(alloc_due_at, now() + interval '2 seconds'), alloc_requested_at = coalesce(alloc_requested_at, clock_timestamp())
+        WHERE site_id = $1 AND alloc_deferred`,
       [siteId],
     );
-    return due.rowCount ? siteId : undefined;
+    return undefined;
   }
 }

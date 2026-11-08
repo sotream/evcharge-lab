@@ -186,7 +186,8 @@ describe('station gateway (real Redis + Kafka, stub sessions)', () => {
     const mvData = mv?.value['data'] as { readings: { samples: unknown[] }[] } | undefined;
     expect(mvData?.readings[0]?.samples).toHaveLength(2);
     expect(mv?.headers['event-type']).toBe('telemetry.meter-values');
-    const old = collector.find((r) => r.topic === topics.meterValues && (r.value['data'] as { ocppMessageId: string }).ocppMessageId === 'mv-old' && r.key === id);
+    // Acked by the broker before the CALLRESULT, but the test's collector consumer may not have it yet: wait for it.
+    const old = await waitFor(() => collector.find((r) => r.topic === topics.meterValues && (r.value['data'] as { ocppMessageId: string }).ocppMessageId === 'mv-old' && r.key === id), { what: 'replayed MeterValues record' });
     expect(old?.value['data']).toMatchObject({ replayed: true });
 
     // raw log: both directions, key = stationId

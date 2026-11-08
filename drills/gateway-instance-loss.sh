@@ -3,6 +3,7 @@
 # reconnected and routable within 60 s; ADR 0004: HAProxy marks it down, stations reconnect to the survivor.
 set -euo pipefail
 DRILL="gateway-instance-loss" source "$(dirname "$0")/lib/common.sh"
+require_fleet
 cat > "$OUT/q.json" <<'Q'
 {
   "connected_gw1": "sum(gateway_connected_stations{gateway=\"gw-1\"})",

@@ -18,3 +18,4 @@ MADR style. One decision per file; superseded ADRs stay with a pointer to the re
 | [0011](0011-tariff-model.md) | Tariff model and deterministic pricing |
 | [0012](0012-kafka-replication-and-producer-backpressure.md) | Kafka replication (RF 3, min ISR 2), producer durability, backpressure, broker drills |
 | [0013](0013-traffic-generators-simulator-and-backfill.md) | Traffic generators: OCPP station simulator and telemetry backfill |
+| [0014](0014-observability-slo-recording-rules-and-alerts.md) | Observability: SLO recording rules, burn-rate alerts, exporters, no Alertmanager |

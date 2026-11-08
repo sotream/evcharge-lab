@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 DRILL="${DRILL:?set DRILL}"
+DRILL_NAME="$DRILL"  # kept: a `VAR=x source` assignment does not survive the source
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="docs/drill-output/${DRILL}-${STAMP}"
 mkdir -p "$OUT"
@@ -15,7 +16,7 @@ echo before > "$PHASE_FILE"
 SAMPLER_PID=""
 CHECKS=()
 
-log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$OUT/events.log"; }
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" | tee -a "$OUT/events.log" >&2; }
 phase() { echo "$1" > "$PHASE_FILE"; log "PHASE $1"; }
 run() { log "RUN $*"; "$@" 2>&1 | tee -a "$OUT/events.log"; }
 
@@ -34,6 +35,9 @@ prom() { # instant query -> number (sum), or "null"
 
 check() { # name measured op threshold   (op: le, ge, eq)
   local name="$1" v="$2" op="$3" thr="$4" ok
+  # Anything that is not a plain number (empty output, curl's 000, a stray log line) is recorded as null.
+  [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$ ]] || v=null
+  [ "$v" != null ] && v=$(node -e 'console.log(Number(process.argv[1]))' "$v")
   ok=$(node -e "const v=Number(process.argv[1]),t=Number(process.argv[3]);const o=process.argv[2];console.log(Number.isFinite(v)&&(o==='le'?v<=t:o==='ge'?v>=t:v===t))" "$v" "$op" "$thr")
   CHECKS+=("{\"check\":\"$name\",\"measured\":$( [ "$v" = null ] && echo null || echo "$v"),\"op\":\"$op\",\"threshold\":$thr,\"pass\":$ok}")
   log "CHECK $name measured=$v $op $thr pass=$ok"
@@ -43,7 +47,7 @@ finish() {
   stop_sampler
   local all=true
   for c in "${CHECKS[@]}"; do [[ "$c" == *'"pass":false'* ]] && all=false; done
-  printf '{"drill":"%s","startedAt":"%s","pass":%s,"checks":[%s]}\n' "$DRILL" "$STAMP" "$all" "$(IFS=,; echo "${CHECKS[*]}")" > "$OUT/result.json"
+  printf '{"drill":"%s","startedAt":"%s","pass":%s,"checks":[%s]}\n' "$DRILL_NAME" "$STAMP" "$all" "$(IFS=,; echo "${CHECKS[*]}")" > "$OUT/result.json"
   rm -f "$PHASE_FILE"
   log "RESULT pass=$all -> $OUT/result.json"
 }
@@ -57,4 +61,16 @@ wait_until() { # timeout_s description command...
   done
   log "OK $what after $((SECONDS - start)) s"
   echo $((SECONDS - start))
+}
+
+# Precondition: the whole simulated fleet is connected. A drill on a disconnected fleet measures nothing (three reruns
+# once ran with 0 of 200 stations connected because HAProxy kept stale gateway IPs) and must abort, not pass or fail.
+require_fleet() {
+  local st
+  st=$(curl -s --max-time 5 127.0.0.1:28089/status | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log(j.started>0&&j.connected===j.started?"ok":`${j.connected}/${j.started}`)}catch{console.log("unreachable")}})')
+  if [ "$st" != ok ]; then
+    log "ABORT: fleet not fully connected ($st); no measurement taken"
+    rm -rf "$OUT"
+    exit 3
+  fi
 }

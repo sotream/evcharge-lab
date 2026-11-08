@@ -15,14 +15,14 @@ The project is a system design lab. Each service has to answer one concrete ques
 
 | Service | Language | System-design question | ADR |
 |---|---|---|---|
-| `station-gateway` | NestJS | How do you hold thousands of long-lived WebSockets across N instances and route a command to the one instance that owns a station? How do you survive reconnect storms and offline replay? | [0003](0003-ocpp-subset-station-auth-and-offline-replay.md), [0004](0004-websocket-connection-routing.md) |
+| `station-gateway` | NestJS | How do you hold thousands of long-lived WebSockets across N instances and route a command to the one instance that owns a station? How do you survive reconnect storms and offline replay? | [0003](0003-ocpp-subset-station-auth-and-offline-replay.md), [0004](0004-websocket-connection-routing.md), [0012](0012-kafka-replication-and-producer-backpressure.md) |
 | `sessions` | NestJS | How do you take reservations under contention without double-booking a connector? How do you run session state machines driven by unreliable station messages? | [0005](0005-reservation-contention.md) |
 | `smart-charging` | Go | How do you split a hard site cap across sessions fairly, fast and safely, and what happens when the allocator is down? | [0006](0006-smart-charging-allocation.md) |
 | `tariff` | Go | How do you price a session deterministically (integer money, time-of-use boundaries, rounding)? | [0011](0011-tariff-model.md) |
 | `billing` | NestJS | How do you get an exactly-once *effect* (one invoice, one capture) out of at-least-once delivery, and how do you compensate across services? | [0007](0007-billing-saga-and-exactly-once-effect.md) |
-| `telemetry-ingest` | Go | How do you absorb a high, bursty write rate of meter values with dedup and bounded memory? | [0008](0008-telemetry-storage.md) |
+| `telemetry-ingest` | Go | How do you absorb a high, bursty write rate of meter values with dedup and bounded memory? | [0008](0008-telemetry-storage.md), [0012](0012-kafka-replication-and-producer-backpressure.md) |
 | `driver-api` | NestJS | How do you authenticate drivers and compose calls to downstream services with timeouts, retries and idempotency? | [0010](0010-authentication.md) |
-| `simulator` | Node | How do you produce realistic load from thousands of stations, including floods, offline periods and replays? | [0003](0003-ocpp-subset-station-auth-and-offline-replay.md) |
+| `simulator` | Node | How do you produce realistic load from thousands of stations, including floods, offline periods and replays? | [0003](0003-ocpp-subset-station-auth-and-offline-replay.md), [0013](0013-traffic-generators-simulator-and-backfill.md) |
 
 ## Decision
 
@@ -106,7 +106,7 @@ Inside the compose network every service listens on `:8080`. Every service expos
 | tariff | ~100 calculations/s | ≥ 2,000/s, p99 < 20 ms | 2 | 1 |
 | telemetry-ingest | 1,333 rows/s | ≥ 2,500 rows/s | 2 | 1 |
 | driver-api | 500 read RPS + 50 write RPS | ≥ 1,000 read RPS, p99 < 300 ms | 2 | 1 |
-| billing | 15 invoices/s peak | (not in ADR 0000; measured) | 2 | 1 |
+| billing | 15 invoices/s peak | none (not in ADR 0000); not measured, no billing load run exists | 2 | 1 |
 
 The lab measures one instance per service. Fleet numbers are `[derived]` from the measured
 per-instance figure. Every service is stateless apart from its database, so N+1 is a replica count,

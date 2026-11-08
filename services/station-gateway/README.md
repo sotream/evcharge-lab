@@ -27,6 +27,17 @@ Governing ADRs: [0003](../../docs/adr/0003-ocpp-subset-station-auth-and-offline-
 - `/health/live`, `/health/ready` (503 while draining or at the connection cap), `/metrics`, `/internal/stats` (internal token).
   Shutdown: readiness 503, sockets closed with 1012, producers flushed.
 
+## Observability
+
+Spans use the global tracer provider, so sampling stays parent-based 10% in compose and nothing is forced.
+
+- `ocpp <Action>` (SERVER) covers one station CALL from frame receipt to the CALLRESULT or CALLERROR send. Attributes: `ocpp.action`, `ocpp.unique_id`, `ocpp.station_id`, `ocpp.gateway`, `ocpp.result` (`ok` or the error code), `ocpp.error_code` on errors, and `ocpp.replayed` for MeterValues.
+- `<topic> publish` (PRODUCER) is a child for every Kafka produce a CALL waits for. Attributes: `messaging.destination.name`, `messaging.kafka.message.key`, `kafka.outcome` (`ok`, `timeout`, `not_enough_replicas`, `error`). The record carries `traceparent`, so consumers join the trace. Raw-log produces have no span.
+- `ocpp <Action> call` (CLIENT) is one outbound CSMS to station CALL, from enqueue to response, timeout or station offline. It is a child of the `command <Action>` span, which continues the command's `traceparent`. Attributes: `ocpp.action`, `ocpp.station_id`, `ocpp.gateway`, `ocpp.result` (the command outcome).
+- The sessions HTTP call appears as an undici CLIENT child of the CALL span.
+
+To find a slow OCPP call in Jaeger, pick service `station-gateway`, operation `ocpp StartTransaction` and set `minDuration` (for example `500ms`); the slow child shows which dependency was slow.
+
 ## Run and test
 
 ```sh

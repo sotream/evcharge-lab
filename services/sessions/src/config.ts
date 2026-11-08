@@ -22,6 +22,8 @@ export const configSchema = baseConfigSchema.extend({
   /** Periodic reallocation per site (ADR 0006: 60 s). */
   ALLOCATION_PERIOD_S: z.coerce.number().int().positive().default(60),
   ALLOCATION_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(8),
+  /** Separate pool for allocation rounds (bulkhead for the OCPP hot path). */
+  ALLOCATION_PG_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),
   /** Reservation sweeper (ADR 0005: every 5 s). */
   SWEEPER_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
   /** Run Kafka consumers and background workers (tests may disable). */

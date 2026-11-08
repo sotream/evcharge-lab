@@ -1,5 +1,6 @@
+import { SpanKind } from '@opentelemetry/api';
 import { Topics } from '@evcharge/contracts';
-import type { Envelope, KafkaProducer, Logger } from '@evcharge/platform';
+import { injectTraceHeaders, inSpan, type Envelope, type KafkaProducer, type Logger } from '@evcharge/platform';
 import type { GatewayMetrics } from './metrics';
 import { errorMessage, kafkaErrorReason } from './util';
 
@@ -64,7 +65,21 @@ export class EventPublisher {
     this.inFlight++;
     metrics.produceBuffer.set({ gateway: this.opts.instance }, this.inFlight);
     try {
-      await this.producer.sendEnvelope(topic, envelope);
+      // Own PRODUCER span (not sendEnvelope's) so the outcome is recorded; same record shape as sendEnvelope.
+      await inSpan(
+        `${topic} publish`,
+        { kind: SpanKind.PRODUCER, attributes: { 'messaging.system': 'kafka', 'messaging.destination.name': topic, 'messaging.kafka.message.key': envelope.key, 'messaging.message.id': envelope.eventId } },
+        async (span) => {
+          try {
+            await this.producer.send([{ topic, key: envelope.key, value: JSON.stringify(envelope), headers: { ...injectTraceHeaders({}), 'event-type': envelope.type, 'event-id': envelope.eventId } }]);
+            span.setAttribute('kafka.outcome', 'ok');
+          } catch (err) {
+            const reason = kafkaErrorReason(err);
+            span.setAttribute('kafka.outcome', reason === 'other' ? 'error' : reason);
+            throw err;
+          }
+        },
+      );
     } catch (err) {
       metrics.produceErrors.inc({ topic, reason: kafkaErrorReason(err) });
       throw err;

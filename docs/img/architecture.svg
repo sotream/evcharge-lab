@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 990" width="1280" height="990" role="img" aria-labelledby="t d">
+<title id="t">evcharge-lab architecture</title>
+<desc id="d">Stations connect over WebSockets through HAProxy to two station-gateway instances. Gateways call sessions over HTTP. Sessions calls smart-charging. Drivers use driver-api over HTTPS, which calls sessions, billing and telemetry-ingest. Services exchange events through a three-broker Kafka cluster. Postgres holds OLTP data, a separate Postgres with TimescaleDB holds telemetry, and Redis holds routes and caches.</desc>
+<defs>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:#1b2733}
+.t{font-size:22px;font-weight:700}.sub{font-size:14px;fill:#44546a}.h{font-size:14px;font-weight:700}.s{font-size:12px;fill:#2d3b4d}.l{font-size:12px;fill:#1b2733;font-weight:600}
+.req{fill:none;stroke:#1d4ed8;stroke-width:2.4}.evt{fill:none;stroke:#7b3fa0;stroke-width:2.4;stroke-dasharray:8 5}.dat{fill:none;stroke:#6b7280;stroke-width:2;stroke-dasharray:2 5;stroke-linecap:round}.ws{fill:none;stroke:#0e7490;stroke-width:3.5}
+</style>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1d4ed8"/></marker>
+<marker id="al" viewBox="0 0 10 10" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto"><path d="M10 0L0 5L10 10z" fill="#1d4ed8"/></marker>
+<marker id="ae" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7b3fa0"/></marker>
+<marker id="aes" viewBox="0 0 10 10" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto"><path d="M10 0L0 5L10 10z" fill="#7b3fa0"/></marker>
+<marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0e7490"/></marker>
+<marker id="aws" viewBox="0 0 10 10" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" orient="auto"><path d="M10 0L0 5L10 10z" fill="#0e7490"/></marker>
+</defs>
+<rect width="1280" height="990" rx="16" fill="#eef2f7"/>
+<text x="30" y="34" class="t">evcharge-lab: request flows and event flows</text>
+<polyline points="70,340 70,790" class="dat"/>
+<polyline points="170,340 170,555 420,555 420,600" class="req" marker-end="url(#ar)"/>
+<polyline points="190,340 190,575 1040,575 1040,600" class="req" marker-end="url(#ar)"/>
+<polyline points="815,340 815,790" class="dat"/>
+<g id="kafka">
+<rect x="30" y="410" width="1220" height="115" rx="12" fill="#ecdaf7" stroke="#7b3fa0" stroke-width="2"/>
+<text x="46" y="434" class="h">Kafka 4.3 (KRaft), 3 brokers, replication factor 3, min ISR 2, producers acks=all</text>
+<rect x="46" y="448" width="150" height="56" rx="7" fill="#ecdaf7" stroke="#7b3fa0" stroke-width="1.5"/>
+<text x="58" y="472" class="h">kafka-1</text><text x="58" y="492" class="s">:29091 (host)</text>
+<rect x="211" y="448" width="150" height="56" rx="7" fill="#ecdaf7" stroke="#7b3fa0" stroke-width="1.5"/>
+<text x="223" y="472" class="h">kafka-2</text><text x="223" y="492" class="s">:29092 (host)</text>
+<rect x="376" y="448" width="150" height="56" rx="7" fill="#ecdaf7" stroke="#7b3fa0" stroke-width="1.5"/>
+<text x="388" y="472" class="h">kafka-3</text><text x="388" y="492" class="s">:29093 (host)</text>
+<text x="560" y="459" class="s">station.events · telemetry.meter-values · station.commands</text>
+<text x="560" y="478" class="s">station.command-results · session.events · billing.events</text>
+<text x="560" y="497" class="s">ocpp.raw-log (14 d) · every topic has a .dlq twin for undecodable records</text>
+</g>
+<rect x="30" y="80" width="190" height="92" rx="9" fill="#e2e8f0" stroke="#4a5568" stroke-width="2"/>
+<text x="42" y="103" class="h">Drivers</text>
+<text x="42" y="123" class="s">mobile or web client</text>
+<text x="42" y="140" class="s">HTTPS + JWT</text>
+<rect x="310" y="80" width="250" height="92" rx="9" fill="#fde8cf" stroke="#c05621" stroke-width="2"/>
+<text x="322" y="103" class="h">Redis 8  :26379</text>
+<text x="322" y="123" class="s">route registry, gw:cmd pub/sub</text>
+<text x="322" y="140" class="s">credential cache, alloc:site,</text>
+<text x="322" y="157" class="s">power latest, login rate limits</text>
+<rect x="610" y="80" width="220" height="46" rx="9" fill="#dceafe" stroke="#2b6cb0" stroke-width="2"/>
+<text x="622" y="103" class="h">station-gateway-1  :28087</text>
+<rect x="610" y="134" width="220" height="46" rx="9" fill="#dceafe" stroke="#2b6cb0" stroke-width="2"/>
+<text x="622" y="157" class="h">station-gateway-2  :28088</text>
+<rect x="880" y="85" width="160" height="82" rx="9" fill="#e2e8f0" stroke="#4a5568" stroke-width="2"/>
+<text x="892" y="108" class="h">station-lb</text>
+<text x="892" y="128" class="s">HAProxy 3.4</text>
+<text x="892" y="145" class="s">leastconn  :28080</text>
+<rect x="1090" y="80" width="160" height="92" rx="9" fill="#e2e8f0" stroke="#4a5568" stroke-width="2"/>
+<text x="1102" y="103" class="h">Stations</text>
+<text x="1102" y="123" class="s">simulator: 10,000</text>
+<text x="1102" y="140" class="s">OCPP 1.6J clients</text>
+<rect x="30" y="250" width="190" height="90" rx="9" fill="#dceafe" stroke="#2b6cb0" stroke-width="2"/>
+<text x="42" y="273" class="h">driver-api  :28082</text>
+<text x="42" y="293" class="s">NestJS, JWT, rate limits</text>
+<text x="42" y="310" class="s">timeouts, retries, circuit</text>
+<text x="42" y="327" class="s">breakers</text>
+<rect x="610" y="250" width="220" height="90" rx="9" fill="#dceafe" stroke="#2b6cb0" stroke-width="2"/>
+<text x="622" y="273" class="h">sessions  :28081</text>
+<text x="622" y="293" class="s">NestJS: catalog, reservations,</text>
+<text x="622" y="310" class="s">session state machine,</text>
+<text x="622" y="327" class="s">allocation rounds</text>
+<rect x="880" y="250" width="190" height="90" rx="9" fill="#d7f1e3" stroke="#2f855a" stroke-width="2"/>
+<text x="892" y="273" class="h">smart-charging  :28084</text>
+<text x="892" y="293" class="s">Go: water-filling</text>
+<text x="892" y="310" class="s">allocator under the</text>
+<text x="892" y="327" class="s">site power cap</text>
+<rect x="260" y="600" width="230" height="90" rx="9" fill="#dceafe" stroke="#2b6cb0" stroke-width="2"/>
+<text x="272" y="623" class="h">billing  :28083</text>
+<text x="272" y="643" class="s">NestJS: saga, mock PSP, invoices</text>
+<text x="272" y="660" class="s">Kafka: session.events in,</text>
+<text x="272" y="677" class="s">billing.events out (outbox)</text>
+<rect x="530" y="600" width="190" height="90" rx="9" fill="#d7f1e3" stroke="#2f855a" stroke-width="2"/>
+<text x="542" y="623" class="h">tariff  :28085</text>
+<text x="542" y="643" class="s">Go: deterministic</text>
+<text x="542" y="660" class="s">integer-money pricing</text>
+<rect x="850" y="600" width="230" height="90" rx="9" fill="#d7f1e3" stroke="#2f855a" stroke-width="2"/>
+<text x="862" y="623" class="h">telemetry-ingest  :28086</text>
+<text x="862" y="643" class="s">Go: batch COPY, dedup,</text>
+<text x="862" y="660" class="s">bounded memory, backpressure</text>
+<rect x="30" y="790" width="780" height="90" rx="9" fill="#fde8cf" stroke="#c05621" stroke-width="2"/>
+<text x="42" y="813" class="h">Postgres 18 (OLTP)  :25432</text>
+<text x="42" y="833" class="s">one instance, one database per service: sessions, billing, tariff, drivers</text>
+<text x="42" y="850" class="s">sessions and billing commit with synchronous_commit=on</text>
+<rect x="850" y="790" width="400" height="90" rx="9" fill="#fde8cf" stroke="#c05621" stroke-width="2"/>
+<text x="862" y="813" class="h">Postgres 18 + TimescaleDB  :25433</text>
+<text x="862" y="833" class="s">telemetry: hypertable meter_readings, power_1m rollup</text>
+<text x="862" y="850" class="s">synchronous_commit=off, compression after 1 day</text>
+<polyline points="1090,126 1040,126" class="ws" marker-end="url(#aw)" marker-start="url(#aws)"/>
+<polyline points="880,103 830,103" class="ws" marker-end="url(#aw)" marker-start="url(#aws)"/>
+<polyline points="880,150 830,150" class="ws" marker-end="url(#aw)" marker-start="url(#aws)"/>
+<polyline points="125,172 125,250" class="req" marker-end="url(#ar)"/>
+<text x="135" y="215" class="l" text-anchor="start">REST over HTTPS</text>
+<text x="1040" y="66" class="l" text-anchor="middle">OCPP 1.6J over WebSocket, one persistent connection per station</text>
+<polyline points="720,180 720,250" class="req" marker-end="url(#ar)"/>
+<text x="730" y="215" class="l" text-anchor="start">sync HTTP: Authorize, Start, Stop,</text>
+<text x="730" y="232" class="l" text-anchor="start">station credentials</text>
+<polyline points="830,295 880,295" class="req" marker-end="url(#ar)"/>
+<text x="855" y="287" class="l" text-anchor="middle">allocate</text>
+<polyline points="220,295 610,295" class="req" marker-end="url(#ar)"/>
+<text x="415" y="287" class="l" text-anchor="middle">HTTP + verified driver id</text>
+<polyline points="490,645 530,645" class="req" marker-end="url(#ar)"/>
+<text x="510" y="638" class="l" text-anchor="middle">price</text>
+<text x="432" y="551" class="l" text-anchor="start">HTTP: invoices, payment method</text>
+<text x="640" y="569" class="l" text-anchor="start">HTTP: live power, series</text>
+<polyline points="610,126 560,126" class="dat"/>
+<text x="585" y="118" class="l" text-anchor="middle">routes</text>
+<polyline points="640,250 520,172" class="dat"/>
+<polyline points="965,690 965,790" class="dat"/>
+<polyline points="360,690 360,790" class="dat"/>
+<polyline points="625,690 625,790" class="dat"/>
+<polyline points="610,157 585,157 585,410" class="evt" marker-end="url(#ae)" marker-start="url(#aes)"/>
+<text x="575" y="330" class="l" text-anchor="end">events + commands</text>
+<text x="575" y="347" class="l" text-anchor="end">(station.*, telemetry.*)</text>
+<polyline points="700,340 700,410" class="evt" marker-end="url(#ae)" marker-start="url(#aes)"/>
+<text x="712" y="368" class="l" text-anchor="start">outbox:</text>
+<text x="712" y="385" class="l" text-anchor="start">session.events</text>
+<polyline points="300,600 300,525" class="evt" marker-end="url(#ae)" marker-start="url(#aes)"/>
+<polyline points="900,525 900,600" class="evt" marker-end="url(#ae)"/>
+<text x="910" y="558" class="l" text-anchor="start">consumes meter values</text>
+<rect x="1090" y="226" width="160" height="150" rx="9" fill="none" stroke="#44546a" stroke-width="1.5"/>
+<text x="1102" y="247" class="h" text-anchor="start">Legend</text>
+<line x1="1102" y1="266" x2="1142" y2="266" class="ws"/>
+<text x="1150" y="270" class="l" text-anchor="start">WebSocket</text>
+<line x1="1102" y1="292" x2="1142" y2="292" class="req"/>
+<text x="1150" y="296" class="l" text-anchor="start">HTTP request</text>
+<line x1="1102" y1="318" x2="1142" y2="318" class="evt"/>
+<text x="1150" y="322" class="l" text-anchor="start">Kafka event</text>
+<line x1="1102" y1="344" x2="1142" y2="344" class="dat"/>
+<text x="1150" y="348" class="l" text-anchor="start">data access</text>
+<text x="1102" y="367" class="s" text-anchor="start">blue Node, green Go</text>
+<rect x="30" y="905" width="1220" height="52" rx="9" fill="#e2e8f0" stroke="#4a5568" stroke-width="1.5"/>
+<text x="46" y="928" class="s" text-anchor="start">Observability: Prometheus :29090 scrapes /metrics on every service · Grafana :23000 · Jaeger :26686 (OTLP :24318, 10% parent-based sampling)</text>
+<text x="46" y="947" class="s" text-anchor="start">Every service listens on :8080 inside the compose network and serves /health/live, /health/ready and /metrics. Host ports are the ones shown.</text>
+</svg>

@@ -113,27 +113,50 @@ phases:
    decrease does not lower it.
 2. A round enqueues all decreases at once. It enqueues an increase only if
    `cap − Σ max(in-force, pending) of all other sessions − idle reserve` still covers it. Increases
-   that do not fit wait for the next round, and a SetChargingProfile result kicks the site again.
+   that do not fit wait for the next round. An Accepted SetChargingProfile result makes the site
+   due in 2 s (debounced and picked up by the tick); it does not start a round at once.
 3. If an increase is held back, the session keeps its in-force limit, which is always safe. If a
    decrease is never applied, the old profile expires at `validTo`. The station then drops to
    `startW`, and the gateway safe share takes over.
 
-Change threshold: a profile is re-sent only when `|Δ| ≥ max(2% of the old limit, 200 W)` (both
-thresholds), or within 60 s of `validTo`. This keeps measured-demand jitter from re-sending every
-profile of a site every round.
+**Sends are per session.** A round sends a session's profile only if the session is new, its limit
+changed by at least `max(2% of the old limit, 200 W)`, it is within 60 s of `validTo`, or its
+profile is unconfirmed and was last sent at least 30 s ago (the retry). When the site is unsafe,
+every session is sent. One change or one result therefore costs one command, not one per session
+at the site.
+
+Why: the first version resent every session's profile at the site in every round (the reason was
+site-level), and every Accepted result kicked a new round. That feedback loop published about 140
+SetChargingProfile/s for a 20-site, 200-station fleet and kept all three Kafka brokers at 140-160%
+CPU (observed, not saved as a file). After the change, about 3 profiles/s in total (changed 1.49,
+refresh 1.15, retry 0.37, new 0.04; observed via Prometheus, not saved as a file). Tests:
+`services/sessions/test/unit/plan.test.ts` and `services/sessions/test/int/two-phase.test.ts`.
 
 ### Contract change
 
 `AllocateReq` gains `idleConnectors` and `startW`. The `AllocateRes` allocation gets `limitW`
 equal to `startW` for suspended sessions. Both are in `packages/contracts`.
 
+### Fallback layers
+
+There are two fallback layers, and each covers a different failure:
+
+1. **Allocator down, `sessions` up (first layer).** `sessions` applies the fallback-equal-share strategy itself: every
+   active session gets `safeShareW = floor(cap / connectors)` (`fallbackAllocation` in
+   `services/sessions/src/allocation/plan.ts`; the rounds are counted with `strategy="fallback-equal-share"`). The
+   smart-charging-down drill checks it (`fallback_rounds_seen`, `sessions_still_charging`,
+   `max_site_utilisation_over_drill`).
+2. **`sessions`, the broker or Redis down (second layer).** Profiles expire at `validTo`, the stations drop to
+   `startW`, and the owning gateway applies the safe share once the whole site is stale.
+
 ## Rejected alternatives
 
 - **Fallback equal share among active sessions.** When another session starts before the next
   decision, the old limits plus the new one exceed the cap. That violates "never exceeded".
-- **`sessions` applies the fallback.** It needs `sessions` and the broker to be up, but ADR 0000
+- **`sessions` as the only fallback.** It needs `sessions` and the broker to be up, but ADR 0000
   requires charging to continue when the backend is down. Only the gateway, or the station
-  itself, can guarantee this.
+  itself, can guarantee this. `sessions` still applies the fallback as the first layer (above); the gateway safe share
+  is the second layer.
 - **No start reserve, reallocate fast instead.** At 45 starts/s, a p99 of 5 s means about 225
   sessions run unallocated at any moment. Without a reserve, each one can overshoot its site.
 - **Proportional to maxW, or an LP solver.** Proportional ignores minimums and starves AC
@@ -146,7 +169,8 @@ equal to `startW` for suspended sessions. Both are in `packages/contracts`.
 
 - An idle connector costs `startW` of headroom: up to about 4.1 kW (3-phase minimum) or
   cap/connectors if that is lower. On a busy site the reserve shrinks as connectors fill. The
-  allocation chart in the README shows the reserve explicitly.
+  smart-charging chart in the README (`smart-charging-cap.svg`) plots the power drawn against the sum of the site caps,
+  the highest single-site utilisation, and the rounds per second by strategy. It does not plot the reserve.
 - Correctness depends on stations honouring stack levels and `validTo`. The simulator does, and
   the "smart-charging down" drill checks that the measured site sum stays at or below the cap
   before, during and after.

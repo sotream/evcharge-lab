@@ -22,6 +22,7 @@ const sitesQuery = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radiusKm: z.coerce.number().positive().max(MAX_RADIUS_KM).default(5),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 const pageQuery = z.object({ limit: z.coerce.number().int().min(1).max(100).optional(), before: z.iso.datetime({ offset: true }).optional() });
 const powerQuery = z.object({ step: z.string().regex(/^\d{1,4}m$/, 'step must be whole minutes, e.g. 5m').optional() });
@@ -76,10 +77,10 @@ export class DriverController {
   /** Map data is not driver specific, so it is cached briefly and shared. lat/lng are rounded to ~110 m and the radius up to a fixed step, for the key and the query. */
   @Get('sites')
   async sites(@Query() q: unknown) {
-    const { lat, lng, radiusKm: requested } = parse(sitesQuery, q);
+    const { lat, lng, radiusKm: requested, limit } = parse(sitesQuery, q);
     const radiusKm = snapRadius(requested);
-    const query = { lat: lat.toFixed(3), lng: lng.toFixed(3), radiusKm };
-    return this.sitesCache.get(`${query.lat}|${query.lng}|${radiusKm}`, async () => (await this.ds.sessions.get('/v1/sites', { ...this.read, query, headers: {} })).body);
+    const query = { lat: lat.toFixed(3), lng: lng.toFixed(3), radiusKm, limit };
+    return this.sitesCache.get(`${query.lat}|${query.lng}|${radiusKm}|${limit}`, async () => (await this.ds.sessions.get('/v1/sites', { ...this.read, query, headers: {} })).body);
   }
 
   @Post('reservations')

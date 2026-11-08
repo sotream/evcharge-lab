@@ -25,7 +25,7 @@ describe('EventPublisher failure handling (ADR 0012)', () => {
 
   it('rethrows the producer error, counts the reason, frees the buffer slot and keeps working', async () => {
     let fail = true;
-    const producer = { sendEnvelope: () => (fail ? Promise.reject(notEnough) : Promise.resolve()) } as unknown as KafkaProducer;
+    const producer = { send: () => (fail ? Promise.reject(notEnough) : Promise.resolve()) } as unknown as KafkaProducer;
     const pub = publisher(producer, 'unit');
     await expect(pub.publish('t', env)).rejects.toBe(notEnough);
     expect(pub.depth).toBe(0);
@@ -35,7 +35,7 @@ describe('EventPublisher failure handling (ADR 0012)', () => {
   });
 
   it('rejects with BufferFullError when every slot is waiting for an ack', async () => {
-    const producer = { sendEnvelope: () => new Promise(() => {}) } as unknown as KafkaProducer;
+    const producer = { send: () => new Promise(() => {}) } as unknown as KafkaProducer;
     const pub = publisher(producer, 'unit2');
     void pub.publish('t', env);
     void pub.publish('t', env);

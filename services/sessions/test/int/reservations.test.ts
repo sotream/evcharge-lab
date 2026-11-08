@@ -22,8 +22,9 @@ describe('reservations (ADR 0005)', () => {
     );
     const ok = results.filter((r) => r.status === 201);
     const conflict = results.filter((r) => r.status === 409);
-    expect(ok).toHaveLength(1);
-    expect(conflict).toHaveLength(49);
+    const seen = JSON.stringify(Object.entries(Object.groupBy(results, (r) => `${r.status} ${r.body?.code ?? ''}`)).map(([k, v]) => [k, v?.length]));
+    // The status distribution is part of the compared object, so a failure shows what the other requests got.
+    expect({ ok: ok.length, conflict: conflict.length, seen }).toMatchObject({ ok: 1, conflict: 49 });
     for (const c of conflict) expect(c.body).toMatchObject({ status: 409, code: 'connector_unavailable' });
     const { rows } = await h.db.pool.query<{ n: string }>("SELECT count(*) AS n FROM reservations WHERE station_id = 'st-0001-001' AND connector_id = 1 AND status IN ('Pending','Active')");
     expect(Number(rows[0]?.n)).toBe(1);

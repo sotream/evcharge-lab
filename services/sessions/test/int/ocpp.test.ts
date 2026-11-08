@@ -244,3 +244,60 @@ describe('ad-hoc charging with unknown idTags (ACCEPT_UNKNOWN_IDTAGS)', () => {
     expect(rows[0].driver_id).toBeNull();
   });
 });
+
+describe('concurrent StartTransactions on one connector', () => {
+  let hc: Harness;
+  beforeAll(async () => {
+    hc = await startHarness({ sites: 1, stationsPerSite: 1, env: { ACCEPT_UNKNOWN_IDTAGS: 'true' } });
+  });
+  afterAll(async () => {
+    await hc.close();
+  });
+
+  it('all succeed and exactly one stays active (no unique violation)', async () => {
+    const starts = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        hc.http('POST', '/internal/ocpp/start-transaction', {
+          headers: { 'idempotency-key': `st-0001-001:race-${i}` },
+          body: { stationId: 'st-0001-001', ocppMessageId: `race-${i}`, connectorId: 1, idTag: 'RACE', meterStartWh: 0, timestamp: new Date().toISOString() },
+        }),
+      ),
+    );
+    expect(starts.map((s) => s.status)).toEqual(Array(10).fill(200));
+    const { rows } = await hc.db.pool.query("SELECT count(*)::int AS n FROM active_sessions WHERE station_id = 'st-0001-001' AND connector_id = 1");
+    expect(rows[0].n).toBe(1);
+  });
+});
+
+describe('uniqueId reuse after a firmware restart', () => {
+  let hr: Harness;
+  beforeAll(async () => {
+    hr = await startHarness({ sites: 1, stationsPerSite: 1, env: { ACCEPT_UNKNOWN_IDTAGS: 'true' } });
+  });
+  afterAll(async () => {
+    await hr.close();
+  });
+  const start = (uid: string, meterStartWh: number, timestamp: string) =>
+    hr.http('POST', '/internal/ocpp/start-transaction', {
+      headers: { 'idempotency-key': `st-0001-001:${uid}` },
+      body: { stationId: 'st-0001-001', ocppMessageId: uid, connectorId: 1, idTag: 'REUSE', meterStartWh, timestamp },
+    });
+
+  it('a replay (same uniqueId, same payload) gets the stored transactionId; a reused uniqueId with a new payload starts a new transaction', async () => {
+    const t1 = new Date(Date.now() - 60_000).toISOString();
+    const a = await start('reused-1', 100, t1);
+    const replay = await start('reused-1', 100, t1);
+    expect(replay.body.transactionId).toBe(a.body.transactionId);
+    // A StopTransaction that happens to reuse the same uniqueId must not be answered with the start's response.
+    const stop = await hr.http('POST', '/internal/ocpp/stop-transaction', {
+      headers: { 'idempotency-key': 'st-0001-001:reused-1' },
+      body: { stationId: 'st-0001-001', ocppMessageId: 'reused-1', transactionId: a.body.transactionId, meterStopWh: 500, timestamp: new Date().toISOString() },
+    });
+    expect(stop.status).toBe(200);
+    expect(stop.body.sessionId).toBe(a.body.sessionId);
+    const b = await start('reused-1', 900, new Date().toISOString());
+    expect(b.status).toBe(200);
+    expect(typeof b.body.transactionId).toBe('number');
+    expect(b.body.transactionId).not.toBe(a.body.transactionId);
+  });
+});

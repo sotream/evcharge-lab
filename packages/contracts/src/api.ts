@@ -80,7 +80,7 @@ export const Station = z.object({
 });
 export const Site = z.object({ siteId: z.string(), name: z.string(), lat: z.number(), lng: z.number(), capW: z.number().int(), stations: z.array(Station) });
 export const SessionsPublic = {
-  /** GET /v1/sites?lat=&lng=&radiusKm= */
+  /** GET /v1/sites?lat=&lng=&radiusKm=&limit= (nearest first; limit default 20, max 100) */
   listSitesRes: z.object({ sites: z.array(Site) }),
   /** POST /v1/reservations  (idempotency-key required) */
   /** Reservation TTL is fixed at 15 min (ADR 0000 SLO "Reservations"). */

@@ -52,7 +52,8 @@ p99 is measured against the 500 ms target in `load/`.
   scrypt (ADR 0010).
 - Credential lookup is a 30 s in-process LRU, then Redis (`cred:station:{id}`, 5 min TTL), then
   `sessions` `GET /internal/stations/:id/credential`. A storm therefore mostly hits Redis, and a
-  cold Redis is bounded by `sessions` read capacity. The flood drill measures this. The response
+  cold Redis is bounded by `sessions` read capacity. The reconnect-storm drill (`drills/reconnect-storm.sh`) exercises this path, but it ran with the 200-station default fleet
+  and a warm Redis, so the cold-Redis case is not measured. The response
   also carries `chargingDefaults` (ADR 0006).
 - Seeded credentials are deterministic for the lab: `secret = HMAC-SHA256(STATION_SECRET_SEED,
   stationId)` as hex, truncated to 32 characters. The simulator can then compute them. In
@@ -96,7 +97,11 @@ for debugging.
 - Gateway admission control: a token bucket on upgrades per instance
   (`GATEWAY_MAX_UPGRADES_PER_S`, default 300, above the 167/s need). It returns HTTP 503 with
   `Retry-After: 1–5` when exhausted, and enforces a hard cap of `GATEWAY_MAX_CONNECTIONS`
-  (default 15,000, 1.5× the per-instance target). The flood drill checks the 60 s target.
+  (default 15,000, 1.5× the per-instance target). The reconnect-storm drill checks the 60 s target. It ran with the 200-station default fleet, not with about 8,333 stations
+  at 833 connects/s, so the 170 upgrades/s requirement is not tested at that rate. Measured
+  (`docs/drill-output/reconnect-storm-20261108T120311Z/result.json`): the fleet was back after 11 s, and both gateways
+  were ready. The gateway-instance-loss drill (`gateway-instance-loss-20261108T122353Z`) measured 31 s until all 200
+  stations reconnected.
 
 ## Rejected alternatives
 

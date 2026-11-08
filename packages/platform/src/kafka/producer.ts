@@ -8,6 +8,12 @@ import type { Envelope } from './envelope';
 export type Compression = 'lz4' | 'snappy' | 'gzip' | 'zstd' | 'none';
 
 export interface ProducerOptions {
+  /** Attempts per request on retriable errors such as NOT_LEADER_OR_FOLLOWER. Default 10. */
+  retries?: number;
+  /** Delay between those attempts. Default 100 ms (the client default of 1000 ms stalled produces during leader moves). */
+  retryDelayMs?: number;
+  /** How long cached cluster metadata is trusted. Client default (5000 ms); 1000 ms did not shorten leader-move stalls. */
+  metadataMaxAgeMs?: number;
   brokers: string[];
   clientId: string;
   /** Default lz4. */
@@ -67,6 +73,11 @@ export class KafkaProducer {
       acks: ProduceAcks.ALL,
       compression: opts.compression ?? 'lz4',
       timeout: opts.timeoutMs ?? 10_000,
+      // The client defaults (retries 3, retryDelay 1000 ms) stalled every produce for about 4.4 s when partition leadership
+      // moved (load/repro/leader-move.sh). A short delay with more attempts recovers within a few hundred ms.
+      retries: opts.retries ?? 10,
+      retryDelay: opts.retryDelayMs ?? 100,
+      ...(opts.metadataMaxAgeMs !== undefined ? { metadataMaxAge: opts.metadataMaxAgeMs } : {}),
       autocreateTopics: opts.autocreateTopics ?? false,
       serializers: serializersFrom(stringSerializer),
     });

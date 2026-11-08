@@ -14,12 +14,20 @@ export const options = {
   summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max'],
 };
 export function setup() {
+  // Every VU is a registered driver (sessions rejects reservations from drivers without an idTag).
+  const drivers = [];
+  for (let i = 0; i < N; i++) {
+    const driverId = uuid();
+    const idTag = `K6R${driverId.replace(/-/g, '').slice(0, 17)}`;
+    const r = http.post(`${URL}/internal/drivers`, JSON.stringify({ driverId, idTag }), { headers: { ...internalHeaders, 'idempotency-key': driverId } });
+    if (r.status < 300) drivers.push(driverId);
+  }
   // A distinct free connector per run: station st-0020-0xx connector 1, picked by the run timestamp.
-  return { stationId: `st-0020-${String(1 + (Math.floor(Date.now() / 1000) % 10)).padStart(3, '0')}`, connectorId: 1 };
+  return { drivers, stationId: `st-0020-${String(1 + (Math.floor(Date.now() / 1000) % 10)).padStart(3, '0')}`, connectorId: 1 };
 }
 export default function (d) {
   const res = http.post(`${URL}/v1/reservations`, JSON.stringify({ stationId: d.stationId, connectorId: d.connectorId }),
-    { headers: { ...internalHeaders, 'x-driver-id': uuid(), 'idempotency-key': uuid() }, responseCallback: http.expectedStatuses(201, 409) });
+    { headers: { ...internalHeaders, 'x-driver-id': d.drivers[(__VU - 1) % d.drivers.length], 'idempotency-key': uuid() }, responseCallback: http.expectedStatuses(201, 409) });
   if (res.status === 201) won.add(1);
   else if (res.status === 409) lost.add(1);
   check(res, { '201 or 409': (r) => r.status === 201 || r.status === 409 });

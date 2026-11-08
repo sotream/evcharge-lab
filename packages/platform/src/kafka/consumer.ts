@@ -47,6 +47,8 @@ export interface ConsumerOptions<S extends z.ZodType> {
   lagIntervalMs?: number;
   /** Buffered (fetched, not yet handled) messages above which fetching pauses. Default 1000. */
   maxBuffered?: number;
+  /** How often processed offsets are committed (latest per partition). Default 250 ms. */
+  commitIntervalMs?: number;
   logger?: Logger;
 }
 
@@ -61,7 +63,9 @@ interface PartitionQueue {
  * partitions are processed at once.
  */
 export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
-  readonly client: Consumer<string, string, string, string>;
+  client: Consumer<string, string, string, string>;
+  private reconnecting = false;
+  private starting = false;
   private stream: MessagesStream<string, string, string, string> | undefined;
   private readonly queues = new Map<string, PartitionQueue>();
   private readonly highestSeen = new Map<string, bigint>();
@@ -78,6 +82,9 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
   private readonly concurrency: number;
   private readonly maxAttempts: number;
   private readonly maxBuffered: number;
+  private readonly commitIntervalMs: number;
+  private readonly pendingCommits = new Map<string, Message<string, string, string, string>>();
+  private commitTimer: NodeJS.Timeout | undefined;
 
   private readonly mMessages = counter({ name: 'kafka_consumer_messages_total', help: 'Kafka messages consumed by outcome', labelNames: ['group', 'topic', 'outcome'] as const });
   private readonly mHandler = histogram({ name: 'kafka_consumer_handler_seconds', help: 'Kafka handler duration incl. retries', labelNames: ['group', 'topic'] as const, buckets: LATENCY_BUCKETS });
@@ -87,7 +94,15 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
     this.concurrency = Math.max(1, opts.concurrency ?? 8);
     this.maxAttempts = Math.max(1, opts.maxAttempts ?? Number.POSITIVE_INFINITY);
     this.maxBuffered = opts.maxBuffered ?? 1000;
-    this.client = new Consumer<string, string, string, string>({
+    this.commitIntervalMs = opts.commitIntervalMs ?? 250;
+    this.client = this.newClient();
+    this.dlq = opts.dlqProducer;
+    this.ownsDlq = !opts.dlqProducer;
+  }
+
+  private newClient(): Consumer<string, string, string, string> {
+    const opts = this.opts;
+    const client = new Consumer<string, string, string, string>({
       clientId: opts.clientId ?? opts.groupId,
       bootstrapBrokers: opts.brokers,
       groupId: opts.groupId,
@@ -96,17 +111,68 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
       autocommit: false,
       deserializers: deserializersFrom(stringDeserializer),
     });
-    this.dlq = opts.dlqProducer;
-    this.ownsDlq = !opts.dlqProducer;
+    // The client emits 'error' itself when it gives up (for example joinGroup failed 4 times while brokers are down).
+    // Unhandled, that event crashed the whole service in the two-broker drill. Log it and rebuild the client instead.
+    client.on('error', (err: unknown) => {
+      this.opts.logger?.error({ err: errorMessage(err), group: this.opts.groupId }, 'kafka consumer client error, reconnecting');
+      void this.reconnect();
+    });
+    return client;
+  }
+
+  /** Drops the current client and stream and joins again with backoff, until it works or the consumer stops. */
+  private async reconnect(): Promise<void> {
+    if (this.reconnecting || this.stopping) return;
+    this.reconnecting = true;
+    try {
+      const old = this.stream;
+      this.stream = undefined;
+      this.pendingCommits.clear(); // offsets of the old membership cannot be committed; redelivery is harmless
+      await old?.close().catch(() => {});
+      await this.client.close(true).catch(() => {});
+      this.client = this.newClient();
+      await this.joinWithRetry();
+    } finally {
+      this.reconnecting = false;
+    }
+  }
+
+  private async joinWithRetry(): Promise<boolean> {
+    for (let attempt = 1; !this.stopping; attempt++) {
+      try {
+        await this.join();
+        if (attempt > 1) this.opts.logger?.info({ group: this.opts.groupId, attempt }, 'kafka consumer joined');
+        return true;
+      } catch (err) {
+        this.opts.logger?.warn({ err: errorMessage(err), group: this.opts.groupId, attempt }, 'kafka consumer join failed, retrying');
+        await sleep(fullJitterBackoff(attempt, 500, 15_000) + 250, this.stopCtl.signal);
+      }
+    }
+    return false;
   }
 
   get running(): boolean {
     return this.stream !== undefined && !this.stopping;
   }
 
+  /**
+   * Joins the group. If the brokers are unreachable the first attempt fails and start() returns anyway: joining continues
+   * in the background (readinessCheck reports it), so a service still starts and serves what does not need Kafka. This
+   * is what ADR 0012 requires of the gateway while two brokers are down.
+   */
   async start(): Promise<void> {
-    if (this.stream) return;
+    if (this.stream || this.starting) return;
+    this.starting = true;
     this.dlq ??= createProducer({ brokers: this.opts.brokers, clientId: `${this.opts.groupId}.dlq`, autocreateTopics: true });
+    try {
+      await this.join();
+    } catch (err) {
+      this.opts.logger?.warn({ err: errorMessage(err), group: this.opts.groupId }, 'kafka consumer could not join yet; retrying in the background');
+      void this.joinWithRetry();
+    }
+  }
+
+  private async join(): Promise<void> {
     const stream = await this.client.consume({
       topics: this.opts.topics,
       mode: 'committed',
@@ -118,7 +184,7 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
     stream.on('data', (m) => this.enqueue(m));
     stream.on('error', (err) => this.opts.logger?.error({ err: errorMessage(err), group: this.opts.groupId }, 'kafka consumer stream error'));
     const lagMs = this.opts.lagIntervalMs ?? 15_000;
-    if (lagMs > 0) {
+    if (lagMs > 0 && !this.lagTimer) {
       this.lagTimer = setInterval(() => void this.refreshLag(), lagMs);
       this.lagTimer.unref();
     }
@@ -145,6 +211,7 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
     this.ready.length = 0;
     this.stopCtl.abort();
     if (this.active > 0) await new Promise<void>((resolve) => this.idle.add(resolve));
+    await this.flushCommits();
     await this.stream?.close().catch(() => {});
     await this.client.close().catch(() => {});
     if (this.ownsDlq) await this.dlq?.close().catch(() => {});
@@ -299,12 +366,29 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
     }
   }
 
+  /**
+   * Marks m as processed. Offsets are committed in batches (the latest processed message per partition, every
+   * commitIntervalMs and on stop) instead of one OffsetCommit per message, which at a few hundred messages/s cost the
+   * brokers more CPU than the messages themselves. A crash redelivers at most one interval of messages; handlers are
+   * idempotent (ADR 0002).
+   */
   private async commit(m: Message<string, string, string, string>): Promise<void> {
-    try {
-      await m.commit();
-    } catch (err) {
-      // Typically a rebalance: the partition moved; the new owner re-processes (at-least-once).
-      this.opts.logger?.warn({ topic: m.topic, partition: m.partition, offset: String(m.offset), err: errorMessage(err) }, 'offset commit failed');
+    this.pendingCommits.set(`${m.topic}:${m.partition}`, m);
+    this.commitTimer ??= setTimeout(() => void this.flushCommits(), this.commitIntervalMs);
+  }
+
+  private async flushCommits(): Promise<void> {
+    if (this.commitTimer) clearTimeout(this.commitTimer);
+    this.commitTimer = undefined;
+    const batch = [...this.pendingCommits.values()];
+    this.pendingCommits.clear();
+    for (const m of batch) {
+      try {
+        await m.commit();
+      } catch (err) {
+        // Typically a rebalance: the partition moved; the new owner re-processes (at-least-once).
+        this.opts.logger?.warn({ topic: m.topic, partition: m.partition, offset: String(m.offset), err: errorMessage(err) }, 'offset commit failed');
+      }
     }
   }
 }

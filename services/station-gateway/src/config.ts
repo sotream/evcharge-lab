@@ -48,7 +48,9 @@ export const gatewayConfigSchema = baseConfigSchema.extend({
   /** Max frame size; OCPP payloads stay under 4 KB (ADR 0004), allow headroom for replays. */
   WS_MAX_PAYLOAD_BYTES: int(64 * 1024, 1024),
   KAFKA_LINGER_MS: int(5, 0),
-  KAFKA_SEND_TIMEOUT_MS: int(30_000, 1000),
+  // Fail fast: a produce that hangs (seen for up to 30 s while partition leadership moved) holds the station's
+  // CALLRESULT. After 3 s the station gets CALLERROR InternalError and retries the same uniqueId (idempotent downstream).
+  KAFKA_SEND_TIMEOUT_MS: int(3_000, 1000),
 });
 export type GatewayConfig = z.infer<typeof gatewayConfigSchema>;
 

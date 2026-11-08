@@ -39,13 +39,13 @@ Postgres shares inside one instance:
 | Backups and retention | 90 days raw, rebuildable from Kafka for 24 h, nightly snapshot acceptable | 10 years, PITR required | one instance means one backup policy, either too expensive for telemetry or too weak for billing |
 | Scaling | grows with fleet × time (~520 GB raw for 90 days) | grows with sessions (~117 GB/year) | vertical scaling decisions diverge |
 
-The cost is one more container, about 600 MB in the lab. The `telemetry` database holds a hypertable with 1-hour chunks. At fleet peak that is about
+The cost is one more container (its memory footprint was not measured). The `telemetry` database holds a hypertable with 1-hour chunks. At fleet peak that is about
 4.8 M rows per chunk, about 1 GB [derived], which fits in memory for current-chunk inserts.
 
 | Concern | Decision | Sizing |
 |---|---|---|
 | Dedup | unique index `(station_id, connector_id, time)` | replays are idempotent |
-| Compression | after 1 day, segmentby `station_id, connector_id`, orderby `time` | 90 days × 5.8 GB = 520 GB raw [ADR 0000]; ~10× compression typical for this shape gives ~50–60 GB on disk [derived; ratio measured on lab data] |
+| Compression | after 1 day, segmentby `station_id, connector_id`, orderby `time` | 90 days × 5.8 GB = 520 GB raw [ADR 0000]; ~10× compression typical for this shape gives ~50–60 GB on disk [derived; the measured compressed-chunk ratio is 10.27, see "Measured" below] |
 | Raw retention | 90 days (`add_retention_policy`) | ADR 0000 |
 | Rollups | continuous aggregate `power_1m(bucket, station_id, connector_id, avg_power_w, max_power_w, energy_wh_delta)`, refreshed every 1 min, retention 2 years | 100,000 connectors × 1,440/day, written only while active (~10% avg) gives ~14 M rows/day [derived], compressed as well |
 
@@ -67,7 +67,7 @@ The cost is one more container, about 600 MB in the lab. The `telemetry` databas
 - **Backpressure.** One in-flight flush per consumer and a bounded buffer of 50,000 rows. When
   Postgres slows down, the consumer stops polling instead of growing memory, and Kafka holds the
   backlog for 24 h (a full day of peak is about 115 M rows). The slow-Postgres drill measures lag
-  growth and drain.
+  growth and drain, and the OCPP latency during the slowdown (see the amendment below).
 - **Latency budget for "durable p99 < 5 s".** Gateway produce, then at most 250 ms of batching,
   then a flush (target p99 < 500 ms at 5,000 rows). The
   `telemetry_ingest_lag_seconds{stage="durable"}` histogram tracks it, from the reading timestamp
@@ -102,4 +102,74 @@ The cost is one more container, about 600 MB in the lab. The `telemetry` databas
 - Metrics: `telemetry_rows_ingested_total`, `telemetry_flush_seconds`,
   `telemetry_ingest_lag_seconds`, `telemetry_dedup_dropped_total`.
 - During a database slowdown, lag grows and then drains. No data is lost within the 24 h Kafka
-  retention.
+  retention. Whether the OCPP path stays unaffected is NOT supported by the drill; see the
+  amendment below.
+
+## Slow-Postgres drill result (amendment, 2026-11-08)
+
+An earlier version of this ADR said that the OCPP path is unaffected by a slow telemetry database.
+The slow-Postgres run `docs/drill-output/slow-postgres-20261108T150304Z/` (measured, with a
+`NOTE.md`) does not support that claim. Two later runs exist: `slow-postgres-20261108T160959Z` (FAIL, confounded by an overloaded lab VM:
+OCPP CALLRESULT p99 2.48 s during the slowdown, durable lag 9.9 s after recovery) and
+`slow-postgres-20261108T162708Z` (PASS, the clean run).
+
+- **Held:** ingest stalled and the backlog stayed in Kafka (peak consumer lag 133 records). The
+  durable lag p99 was 1.37 s 90 s after recovery (target < 5 s). 0 of 2,103 probe readings were
+  missing. A `lag_drained_within_s` of 0 does not show a drain: that check is the time until lag
+  is below 200 records (`drills/slow-postgres.sh`), and a peak of 133 is already below 200.
+- **Failed:** the OCPP CALLRESULT p99 rose to the 10 s histogram cap during the slowdown (target
+  0.5 s), and fell to about 0.7 s afterwards. Heartbeat, answered locally by the gateway, stayed at
+  about 8 ms, so the gateway event loop was not blocked. Calls that wait for a Kafka ack and
+  StopTransaction slowed together. The p99 was already above the target before the database was
+  capped: 0.24-0.47 s until 15:03:44, then 0.84-0.85 s (maximum 0.849 s) from 15:03:45, before the
+  database cap (15:04:06) and before the 15:04:31 leader move. That pre-fault rise is not isolated.
+- **Cause (isolated afterwards from the broker and gateway logs, see the run's NOTE.md):** a Kafka preferred-leader rebalance (`auto.leader.rebalance.enable`, every 300 s) moved partition leadership at 15:04:31, 5 min after a rolling broker restart, and the gateway's in-flight produces hung for the full 30 s send timeout (50 x "kafka send timed out after 30000ms" in the gateway log, observed, not saved as a file), holding every Kafka-acked CALLRESULT. The slow database itself was not the cause. The gateway now
+  fails a produce after 3 s (ADR 0012 amendment), which bounds the stall.
+- **Clean rerun:** `slow-postgres-20261108T162708Z` shows CALLRESULT p99 0.076 s while the
+  database was capped, durable lag 0.49 s 90 s after recovery, 0 of 140 probe readings missing.
+  This is consistent with no OCPP impact from a slow telemetry database, but it does not confirm it.
+  Its peak consumer lag was 0 (no backlog built at the default 30 s meter interval) and it has only
+  140 probe readings. Both 2 s-meter runs that did build a backlog failed the CALLRESULT check: one
+  with an isolated Kafka leader-move cause (`150304Z`), one on an overloaded VM (`160959Z`). Whether a
+  large ingest backlog affects the OCPP path is therefore not demonstrated either way.
+
+The miss stays visible, as ADR 0000 requires. An earlier run
+(`slow-postgres-20261108T142904Z`) failed for other reasons (a slow Kafka, a feedback loop in
+`sessions`, and a lag check taken while the backlog drained), all fixed afterwards; see its
+`NOTE.md`.
+
+## Measured (amendment, 2026-11-08)
+
+**Ingest** (`docs/load-output/telemetry-ingestbench.json`, measured; COPY plus staging). Each step offers a fixed rate.
+"Keeping up" means all produced rows durable within 5 s after the produce phase ended and durable lag p99 < 5 s.
+
+| Offered rows/s | Sustained rows/s | Durable lag p99 | Keeping up |
+|---|---|---|---|
+| 1,000 | 989.72 | 0.64 s | yes |
+| 2,500 | 2,471.23 | 0.94 s | yes |
+| 5,000 | 4,733.51 | 1.76 s | yes |
+| 10,000 | 9,936.56 | 3.03 s | yes |
+| 20,000 | 18,109.07 | 4.09 s | yes |
+| 40,000 | 24,597.61 | 14.73 s | no |
+
+- At the 2,500 rows/s target the sustained rate is 2,471.23 rows/s, which is **below** the target by 1.15% [derived:
+  2,471.23 / 2,500 − 1]. The figure is rows inserted divided by produce plus drain time [derived: 49,998 / (20.01 s +
+  0.22 s)]; all 49,998 rows were durable and none was lost, and the durable lag p99 of 0.94 s is inside the 5 s target.
+  The strict "sustained ≥ 2,500" check is missed, and the file records the run as keeping up.
+- The row-by-row INSERT baseline in the same file keeps up to 500 rows/s offered and peaks at 755.93 rows/s sustained.
+- The sustained maximum in the file is 24,597.61 rows/s (at 40,000 offered, not keeping up). The highest offered rate that
+  kept up is 20,000 rows/s. These are one-machine figures; see the `environment` block of the file.
+
+**Storage** (`docs/load-output/telemetry-backfill-20261108T082949Z.json`; 5,000 stations, 2 connectors each, 7 days, one
+reading every 30 s):
+
+- Compression ratio of the compressed raw chunks: 10.27 (measured, `compressedChunksRatioBeforeOverAfter`). The ratio
+  over all chunks, including indexes and the `power_1m` aggregate, is 4.41 (measured).
+- Raw 90-day size for the full fleet of 50,000 stations: 59.4 GB [derived; formula in the file:
+  `rowsPerDayFullFleet * (bytesPerRowCompressed * 89 + bytesPerRowUncompressed * 1)`].
+- Rollup (`power_1m`) size for 2 years: 85.7 GB [derived; formula in the file]. Together 145.1 GB [derived].
+- Query latency was measured for five queries (300 runs each): the latest value per connector of one station, one
+  session's readings on recent and on compressed chunks, and the 1-minute rollup of one site and one day on recent and on
+  compressed chunks. The p99 values range from 4.29 ms to 36.59 ms. The per-query figures are in the README metrics table.
+- Compression and query numbers were measured with the background policy jobs paused and run manually (the file's
+  `notes`).

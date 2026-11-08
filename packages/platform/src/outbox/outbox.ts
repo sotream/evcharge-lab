@@ -25,7 +25,18 @@ CREATE INDEX IF NOT EXISTS outbox_unpublished_tx_idx ON outbox (tx, id) WHERE pu
 /** Advisory lock key (any constant): only one relay per database publishes at a time. */
 export const OUTBOX_RELAY_LOCK_KEY = 7_201_811_080;
 
-/** Include in a service migration. The trigger NOTIFYs relays on commit of any insert. */
+/**
+ * Drops the NOTIFY trigger of the first outbox version. Postgres serialises the commit of every transaction that
+ * called NOTIFY on one global lock, held across the WAL flush, so a NOTIFY per business transaction capped the OCPP
+ * hot path at one commit per fsync (found by the sessions k6 run: COMMIT waiting on Lock:object). The relay polls
+ * instead (pollIntervalMs, default 50 ms).
+ */
+export const OUTBOX_DROP_NOTIFY_DDL = `
+DROP TRIGGER IF EXISTS outbox_notify_trg ON outbox;
+DROP FUNCTION IF EXISTS outbox_notify();
+`;
+
+/** Include in a service migration. */
 export const OUTBOX_DDL = `
 CREATE TABLE IF NOT EXISTS outbox (
   id bigserial PRIMARY KEY,
@@ -38,12 +49,6 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 CREATE INDEX IF NOT EXISTS outbox_published_at_idx ON outbox (published_at) WHERE published_at IS NOT NULL;
 ${OUTBOX_TX_ORDER_DDL}
-CREATE OR REPLACE FUNCTION outbox_notify() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  PERFORM pg_notify('${OUTBOX_CHANNEL}', '');
-  RETURN NULL;
-END $$;
-CREATE OR REPLACE TRIGGER outbox_notify_trg AFTER INSERT ON outbox FOR EACH STATEMENT EXECUTE FUNCTION outbox_notify();
 `;
 
 export interface OutboxMessage {
@@ -76,9 +81,11 @@ export interface OutboxRelayOptions {
   logger?: Logger;
   /** Rows claimed per cycle. Default 100. */
   batchSize?: number;
-  /** Fallback poll interval when no NOTIFY arrives. Default 1000ms. */
+  /** Poll interval (and the fallback when LISTEN is used but no NOTIFY arrives). Default 50 ms. */
   pollIntervalMs?: number;
-  /** Use LISTEN/NOTIFY for low-latency wake-up (one dedicated connection). Default true. */
+  /** After a wake-up, wait this long so rows committed close together share one Kafka batch. Default 10 ms. */
+  coalesceMs?: number;
+  /** LISTEN for NOTIFYs a producer sends itself (OUTBOX_DDL no longer installs a trigger). Default false. */
   listen?: boolean;
   /** Connection string for the LISTEN connection. Defaults to the pool's connection string. */
   listenConnectionString?: string;
@@ -111,6 +118,8 @@ export class OutboxRelay {
   private cleanupTimer: NodeJS.Timeout | undefined;
   private stopCtl = new AbortController();
   private lastPendingAt = 0;
+  private notified = false;
+  private readonly coalesceMs: number;
   private readonly batchSize: number;
   private readonly pollIntervalMs: number;
 
@@ -120,14 +129,15 @@ export class OutboxRelay {
 
   constructor(private readonly opts: OutboxRelayOptions) {
     this.batchSize = opts.batchSize ?? 100;
-    this.pollIntervalMs = opts.pollIntervalMs ?? 1000;
+    this.pollIntervalMs = opts.pollIntervalMs ?? 50;
+    this.coalesceMs = opts.coalesceMs ?? 10;
   }
 
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
     this.stopCtl = new AbortController();
-    if (this.opts.listen !== false) await this.connectListener();
+    if (this.opts.listen === true) await this.connectListener();
     const cleanupMs = this.opts.cleanupIntervalMs ?? 60_000;
     if (cleanupMs > 0) {
       this.cleanupTimer = setInterval(() => void this.cleanup().catch((err) => this.opts.logger?.warn({ err: errorMessage(err) }, 'outbox cleanup failed')), cleanupMs);
@@ -203,7 +213,7 @@ export class OutboxRelay {
       try {
         const n = await this.runOnce();
         failures = 0;
-        if (Date.now() - this.lastPendingAt >= this.pollIntervalMs) await this.refreshPending();
+        if (Date.now() - this.lastPendingAt >= 5000) await this.refreshPending(); // the gauge needs no 50 ms freshness
         if (n >= this.batchSize) continue; // more waiting: go again immediately
         await this.waitForWork();
       } catch (err) {
@@ -215,15 +225,23 @@ export class OutboxRelay {
   }
 
   private async waitForWork(): Promise<void> {
-    await new Promise<void>((resolve) => {
-      const done = () => {
-        clearTimeout(t);
-        resolve();
-      };
-      const t = setTimeout(done, this.pollIntervalMs);
-      this.wake = done;
-    });
-    this.wake = undefined;
+    if (this.notified) {
+      // A NOTIFY arrived while the last cycle ran: do not sleep a whole poll interval on it.
+      this.notified = false;
+    } else {
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(t);
+          resolve();
+        };
+        const t = setTimeout(done, this.pollIntervalMs);
+        this.wake = done;
+      });
+      this.wake = undefined;
+      this.notified = false;
+    }
+    // Coalesce: commits arriving within a few ms go out in one batch, instead of one produce request per row.
+    if (this.coalesceMs > 0) await sleep(this.coalesceMs, this.stopCtl.signal);
   }
 
   private scheduleReconnect(ms: number): void {
@@ -242,7 +260,10 @@ export class OutboxRelay {
     const connectionString = this.opts.listenConnectionString ?? (this.opts.pool.options as { connectionString?: string }).connectionString;
     if (!connectionString) return;
     const client = new Client({ connectionString, connectionTimeoutMillis: 3000 });
-    client.on('notification', () => this.wake?.());
+    client.on('notification', () => {
+      if (this.wake) this.wake();
+      else this.notified = true;
+    });
     client.on('error', (cause: Error) => void this.onListenerLost(client, cause));
     try {
       await client.connect();

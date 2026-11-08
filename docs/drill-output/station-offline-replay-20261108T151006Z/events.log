@@ -1,0 +1,17 @@
+2026-11-08T15:10:06Z simulator time scale 60; offline 1440 simulated min = 1440 s wall clock
+2026-11-08T15:10:07Z probes: {"stations":["st-0001-001","st-0002-001","st-0003-001","st-0004-001","st-0005-001","st-0006-001","st-0007-001","st-0008-001","st-0009-001","st-0010-001","st-0011-001","st-0012-001","st-0013-001","st-0014-001","st-0015-001","st-0016-001","st-0017-001","st-0018-001","st-0019-001","st-0020-001"],"file":"/tmp/sim-probes/probe-20261108150858-fcc174.jsonl"}
+2026-11-08T15:10:07Z sampler pid 86371
+2026-11-08T15:11:07Z PHASE during
+2026-11-08T15:11:07Z offline: {"stations":20,"ids":["st-0001-001","st-0002-001","st-0003-001","st-0004-001","st-0005-001","st-0006-001","st-0007-001","st-0008-001","st-0009-001","st-0010-001","st-0011-001","st-0012-001","st-0013-001","st-0014-001","st-0015-001","st-0016-001","st-0017-001","st-0018-001","st-0019-001","st-0020-001"],"realSeconds":1440,"until":"2026-11-08T15:35:07.369Z"}
+2026-11-08T15:11:07Z CHECK stations_taken_offline measured=20 ge 20 pass=true
+2026-11-08T15:11:13Z CHECK connected_dropped_during_offline measured=20 ge 20 pass=true
+2026-11-08T15:35:18Z PHASE after
+2026-11-08T15:45:19Z TIMEOUT waiting for replay queues drained
+2026-11-08T15:45:19Z CHECK replay_drained_within_s measured=null le 600 pass=false
+2026-11-08T15:45:20Z CHECK queue_dropped_total measured=0 eq 0 pass=true
+2026-11-08T15:47:30Z probe readings generated=164203 missing=82914 (until simulated 2026-11-10T04:30:56.719Z)
+2026-11-08T15:47:31Z CHECK probe_readings_generated measured=164203 ge 1 pass=true
+2026-11-08T15:47:31Z CHECK probe_readings_missing measured=82914 eq 0 pass=false
+2026-11-08T15:47:40Z CHECK duplicate_rows measured=0 eq 0 pass=true
+2026-11-08T15:47:40Z replayed flag not checked at time scale 60
+2026-11-08T15:47:41Z RESULT pass=false -> docs/drill-output/station-offline-replay-20261108T151006Z/result.json

@@ -4,7 +4,7 @@
 set -euo pipefail
 OUTDIR="$1"; UNTIL="$2"
 rm -rf "$OUTDIR/probes" && mkdir -p "$OUTDIR/probes"
-docker compose cp -q simulator:/tmp/sim-probes/. "$OUTDIR/probes/" >/dev/null 2>&1 || true
+docker compose cp simulator:/tmp/sim-probes/. "$OUTDIR/probes/" >/dev/null 2>&1 || true
 CSV="$OUTDIR/probes/readings.csv"
 cat "$OUTDIR"/probes/*.jsonl 2>/dev/null | node -e '
   const until = Date.parse(process.argv[1]); let s = "";

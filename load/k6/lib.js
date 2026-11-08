@@ -25,7 +25,7 @@ export function summary(name) {
   return (data) => ({ [`../../docs/load-output/k6-${name}.json`]: JSON.stringify(data, null, 2), stdout: textLine(data) });
 }
 function textLine(data) {
-  const d = data.metrics.http_req_duration?.values ?? {};
+  const d = (data.metrics["http_req_duration{scenario:open}"] ?? data.metrics.http_req_duration)?.values ?? {};
   const reqs = data.metrics.http_reqs?.values ?? data.metrics.iterations?.values ?? {};
   return `rate=${(reqs.rate ?? 0).toFixed(1)}/s p95=${(d['p(95)'] ?? 0).toFixed(2)}ms p99=${(d['p(99)'] ?? 0).toFixed(2)}ms\n`;
 }

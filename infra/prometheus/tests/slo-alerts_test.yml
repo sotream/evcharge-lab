@@ -1,0 +1,205 @@
+# promtool test rules: synthetic series prove the recording rules and alerts behave as ADR 0014 describes.
+rule_files:
+  - ../rules/slo-recording.yml
+  - ../rules/slo-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 600 requests per minute, 3.3% answered 5xx for 90 minutes. That is above 14.4 x 0.1% on the
+  # 1h and 5m windows, so the fast alert fires.
+  - name: driver-api fast burn fires
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/v1/sites",status="200"}'
+        values: '0+580x120'
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/v1/sites",status="500"}'
+        values: '0+20x120'
+      # Health checks must not dilute the ratio.
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/health/ready",status="200"}'
+        values: '0+5000x120'
+    promql_expr_test:
+      - expr: slo:driver_api_error_ratio:rate5m
+        eval_time: 90m
+        exp_samples:
+          - labels: 'slo:driver_api_error_ratio:rate5m'
+            value: 0.03333333333333333
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: DriverApiErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              description: "driver-api 5xx ratio exceeds 14.4 x the 0.001 error budget on both the 1h and 5m windows (Google SRE workbook multiwindow multi-burn-rate)."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "DriverApi 99.9% SLO: error budget burning at 14.4x (1h and 5m windows)"
+
+  # 0.05% errors is half the 99.9% budget: nothing fires.
+  - name: driver-api healthy traffic does not fire
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/v1/sites",status="200"}'
+        values: '0+599.7x120'
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/v1/sites",status="500"}'
+        values: '0+0.3x120'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: DriverApiErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: DriverApiErrorBudgetBurnSlow
+        exp_alerts: []
+
+  # A five minute spike: the 5m window is hot but the 1h window stays under 1.44%, so no page.
+  - name: driver-api short spike does not fire
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/v1/sites",status="200"}'
+        values: '0+600x80 48550 49100 49650 50200 50750 51350+600x34'
+      - series: 'http_server_requests_seconds_count{service="driver-api",method="GET",route="/v1/sites",status="500"}'
+        values: '0x80 50 100 150 200 250 250x35'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: DriverApiErrorBudgetBurnFast
+        exp_alerts: []
+
+  # Gateway: 1% CALLERROR for 90 minutes is above 14.4 x 0.05% = 0.72%.
+  - name: gateway fast burn fires
+    interval: 1m
+    input_series:
+      - series: 'ocpp_messages_total{service="station-gateway",direction="in",type="call",action="Heartbeat"}'
+        values: '0+1000x120'
+      - series: 'ocpp_messages_total{service="station-gateway",direction="out",type="error",action="Heartbeat"}'
+        values: '0+10x120'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: GatewayErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              description: "gateway CALLERROR ratio exceeds 14.4 x the 0.0005 error budget on both the 1h and 5m windows (Google SRE workbook multiwindow multi-burn-rate)."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "Gateway 99.95% SLO: error budget burning at 14.4x (1h and 5m windows)"
+
+  - name: gateway healthy traffic does not fire
+    interval: 1m
+    input_series:
+      - series: 'ocpp_messages_total{service="station-gateway",direction="in",type="call",action="Heartbeat"}'
+        values: '0+1000x120'
+      - series: 'ocpp_messages_total{service="station-gateway",direction="out",type="error",action="Heartbeat"}'
+        values: '0+0.1x120'
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: GatewayErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: GatewayErrorBudgetBurnSlow
+        exp_alerts: []
+
+  - name: site cap exceeded fires
+    interval: 1m
+    input_series:
+      - series: 'sim_site_cap_watts{service="simulator",site="site-0001"}'
+        values: '100000x10'
+      - series: 'sim_site_drawn_watts{service="simulator",site="site-0001"}'
+        values: '90000x4 120000x6'
+      - series: 'sim_site_cap_watts{service="simulator",site="site-0002"}'
+        values: '100000x10'
+      - series: 'sim_site_drawn_watts{service="simulator",site="site-0002"}'
+        values: '100000x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: SiteCapExceeded
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: SiteCapExceeded
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              description: "max over sites of sim_site_drawn_watts / sim_site_cap_watts is above 1. Any occurrence is a failure."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "A site drew more than its cap (ADR 0000: the cap is never exceeded)"
+
+  - name: dlq messages fire
+    interval: 1m
+    input_series:
+      - series: 'kafka_consumer_messages_total{service="billing",group="billing.session-events",topic="session.events.v1",outcome="dlq"}'
+        values: '0x5 3+0x10'
+      - series: 'telemetry_dead_lettered_total{service="telemetry-ingest"}'
+        values: '0x5 7+0x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DlqMessages
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: DlqMessages
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: billing
+              group: billing.session-events
+              topic: session.events.v1
+              outcome: dlq
+            exp_annotations:
+              description: "Records sent to a dead-letter topic by group billing.session-events"
+              runbook: "docs/runbook.md#dead-letter-topics"
+              summary: "Records sent to a dead-letter topic by group billing.session-events"
+      - eval_time: 7m
+        alertname: TelemetryDeadLettered
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: telemetry-ingest
+            exp_annotations:
+              description: "Telemetry records dead-lettered"
+              runbook: "docs/runbook.md#dead-letter-topics"
+              summary: "Telemetry records dead-lettered"
+
+  # 100 rows per minute land in the le="10" bucket and none below 1 s: p99 is about 9.9 s.
+  - name: telemetry durable lag breaks the objective
+    interval: 1m
+    input_series:
+      - series: 'telemetry_ingest_lag_seconds_bucket{stage="durable",le="1"}'
+        values: '0x20'
+      - series: 'telemetry_ingest_lag_seconds_bucket{stage="durable",le="10"}'
+        values: '0+100x20'
+      - series: 'telemetry_ingest_lag_seconds_bucket{stage="durable",le="+Inf"}'
+        values: '0+100x20'
+    promql_expr_test:
+      - expr: slo:telemetry_durable:p99_5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'slo:telemetry_durable:p99_5m'
+            value: 9.91
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: TelemetryDurableLagSloBreach
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: TelemetryDurableLagSloBreach
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              description: "Durable lag p99 has been above 5 s for 5 minutes, breaking the ADR 0000 telemetry objective."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "Telemetry durable lag p99 above the 5 s objective"
+
+  - name: telemetry ingest paused fires
+    interval: 1m
+    input_series:
+      - series: 'telemetry_ingest_paused'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TelemetryIngestPaused
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              description: "Telemetry ingest paused (backpressure) for 5 minutes"
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+              summary: "Telemetry ingest paused (backpressure) for 5 minutes"

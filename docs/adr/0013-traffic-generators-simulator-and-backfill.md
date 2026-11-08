@@ -54,8 +54,9 @@ different questions need two tools:
   - size before and after compression;
   - the compression ratio;
   - chunk count and sizes;
-  - p50/p95/p99 latency of three queries: latest value per connector, one session's readings by
-    range, and the 1-minute rollup for one day of a site.
+  - p50/p95/p99 latency of five queries (300 runs each): the latest value per connector of one station, one
+    session's readings by range on recent and on compressed chunks, and the 1-minute rollup of one site and one day on
+    recent and on compressed chunks.
 - Full-fleet extrapolation (50,000 stations, 90 days) is written as `[derived]` with its formula,
   next to the `[measured]` 10% figures.
 

@@ -103,15 +103,17 @@ describe('outbox', () => {
     expect(sample(text, 'outbox_publish_lag_seconds_count', {})).toBeGreaterThanOrEqual(N);
   });
 
-  it('LISTEN/NOTIFY wakes the relay well before the poll interval', async () => {
-    const r = relay({ pollIntervalMs: 60_000 });
+  it('a committed row is published within a few poll intervals (no NOTIFY in the commit path)', async () => {
+    const { rows } = await db.pool.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'outbox_notify_trg'");
+    expect(rows[0].n).toBe(0);
+    const r = relay({ pollIntervalMs: 50 });
     await r.start();
     await new Promise((res) => setTimeout(res, 300)); // let the first cycle go idle
     const e = env(999);
     const t0 = Date.now();
     await withTx(db.pool, (c) => enqueueOutbox(c, { topic, event: e }));
     await waitFor(() => received.find((x) => x.eventId === e.eventId), { timeoutMs: 10_000 });
-    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(Date.now() - t0).toBeLessThan(1000);
     await r.stop();
   });
 

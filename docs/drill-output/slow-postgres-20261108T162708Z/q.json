@@ -1,0 +1,9 @@
+{
+  "rows_ingested_per_s": "sum(rate(telemetry_rows_ingested_total[10s]))",
+  "ingest_lag_p99_s": "histogram_quantile(0.99, sum by (le) (rate(telemetry_ingest_lag_seconds_bucket[30s])))",
+  "buffered_rows": "sum(telemetry_buffered_rows)",
+  "ingest_paused": "max(telemetry_ingest_paused)",
+  "consumer_lag": "sum(kafka_consumer_lag{group=\"telemetry-ingest.meter-values\"})",
+  "flush_p99_s": "histogram_quantile(0.99, sum by (le) (rate(telemetry_flush_seconds_bucket[30s])))",
+  "callresult_p99_s": "histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket[30s])))"
+}

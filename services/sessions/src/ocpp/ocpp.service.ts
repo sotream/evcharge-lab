@@ -1,11 +1,12 @@
 /**
  * Internal OCPP-facing operations called synchronously by station-gateway (ADR 0001 rule 1, ADR 0003).
  * Budget: CALLRESULT p99 < 500 ms, so each operation is one short transaction of indexed statements.
- * StartTransaction/StopTransaction are idempotent on `${stationId}:${ocppMessageId}` via the `ocpp_messages`
- * primary key: a replay (or a concurrent duplicate, which blocks on the key until the first commits) gets the
+ * StartTransaction/StopTransaction are idempotent on (stationId, ocppMessageId, action, payload hash) via the
+ * `ocpp_messages` primary key: a replay (same uniqueId, same payload) (or a concurrent duplicate, which blocks on the key until the first commits) gets the
  * stored response, i.e. the same transactionId.
  */
 /* oxlint-disable no-await-in-loop */ // statements of one transaction run sequentially on one connection
+import { createHash } from 'node:crypto';
 import { type api, fleet } from '@evcharge/contracts';
 import { type Logger, type Pool, type PoolClient, withTx } from '@evcharge/platform';
 import type { z } from 'zod';
@@ -87,14 +88,15 @@ export class OcppService {
 
   async startTransaction(req: StartTxReq): Promise<StartTxRes> {
     return this.timed('start', async () => {
-      const key = `${req.stationId}:${req.ocppMessageId}`;
+      const key = messageKey(req.stationId, req.ocppMessageId, 'StartTransaction', req);
       const out = await withTx(this.pool, async (c) => {
         const replay = await this.claim(c, key, 'StartTransaction');
         if (replay !== undefined) return { replay: true as const, res: replay as StartTxRes };
         const { rows } = await c.query<{ connector_pk: string; site_id: string; tariff_id: string; max_power_w: number; min_power_w: number; driver_id: string | null; blocked: boolean | null }>(
           `SELECT c.connector_pk, c.site_id, c.tariff_id, c.max_power_w, c.min_power_w, d.driver_id, d.blocked
              FROM connectors c LEFT JOIN drivers d ON d.id_tag = $3
-            WHERE c.station_id = $1 AND c.connector_id = $2`,
+            WHERE c.station_id = $1 AND c.connector_id = $2
+              FOR NO KEY UPDATE OF c`, // serialises StartTransactions on one connector (the replace-then-insert below races otherwise); NO KEY so FK checks (KEY SHARE) do not queue behind it
           [req.stationId, req.connectorId, req.idTag],
         );
         const ctx = rows[0];
@@ -162,7 +164,7 @@ export class OcppService {
 
   async stopTransaction(req: StopTxReq): Promise<StopTxRes> {
     return this.timed('stop', async () => {
-      const key = `${req.stationId}:${req.ocppMessageId}`;
+      const key = messageKey(req.stationId, req.ocppMessageId, 'StopTransaction', req);
       const out = await withTx(this.pool, async (c) => {
         const replay = await this.claim(c, key, 'StopTransaction');
         if (replay !== undefined) return { replay: true as const, res: replay as StopTxRes };
@@ -268,4 +270,16 @@ export class OcppService {
       throw err;
     }
   }
+}
+
+/**
+ * Dedup key for station transaction messages. A station replays a message with the same uniqueId AND the same
+ * payload, so both are part of the key. Firmware may restart its uniqueId counter after a reboot: keying on the
+ * uniqueId alone made a new StartTransaction receive an old message's stored response (no transactionId), and the
+ * station retried it forever (found in the Kafka drills; the simulator had the same counter reset).
+ */
+export function messageKey(stationId: string, ocppMessageId: string, action: string, req: object): string {
+  const { ocppMessageId: _id, ...payload } = req as Record<string, unknown>;
+  const digest = createHash('sha256').update(JSON.stringify(payload, Object.keys(payload).sort())).digest('hex').slice(0, 16);
+  return `${stationId}:${ocppMessageId}:${action}:${digest}`;
 }

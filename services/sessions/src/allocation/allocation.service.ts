@@ -226,12 +226,13 @@ export class AllocationService {
       started_at: Date;
       limit_w: number | null;
       limit_valid_to: Date | null;
+      limit_sent_at: Date | null;
       confirmed_limit_w: number | null;
       confirmed_valid_to: Date | null;
       possible_limit_w: number | null;
       possible_valid_to: Date | null;
     }>(
-      `SELECT a.session_id, a.transaction_id, a.station_id, a.connector_id, a.max_w, a.min_w, a.started_at, a.limit_w, a.limit_valid_to,
+      `SELECT a.session_id, a.transaction_id, a.station_id, a.connector_id, a.max_w, a.min_w, a.started_at, a.limit_w, a.limit_valid_to, a.limit_sent_at,
               a.confirmed_limit_w, a.confirmed_valid_to, a.possible_limit_w, a.possible_valid_to
          FROM active_sessions a WHERE a.site_id = $1 ORDER BY a.started_at, a.transaction_id`,
       [siteId],
@@ -248,6 +249,7 @@ export class AllocationService {
       startedAt: x.started_at,
       limitW: x.limit_w,
       limitValidTo: x.limit_valid_to,
+      limitSentAt: x.limit_sent_at,
       confirmedW: x.confirmed_limit_w,
       confirmedValidTo: x.confirmed_valid_to,
       possibleW: x.possible_limit_w,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ocpp } from '@evcharge/contracts';
 import type { Logger } from '@evcharge/platform';
 import { WebSocket, type RawData } from 'ws';
@@ -15,6 +16,9 @@ import type { TimerWheel, WheelTimer } from './wheel';
 
 type Status = ocpp.ChargePointStatus;
 type Obj = Record<string, unknown>;
+
+/** Per-process prefix: uniqueIds stay unique across simulator restarts (counters restart at 0; max id length is 36). */
+const BOOT = randomUUID().slice(0, 6);
 
 /** Everything a station needs from the simulator process. */
 export interface SimContext {
@@ -203,7 +207,9 @@ export class Station {
       this.scheduleReconnect(retryAfterMs);
     };
     ws.on('open', () => {
-      if (gen !== this.generation) return;
+      // A superseded attempt that still completed: close it at once, or the CSMS sees it as the newer connection and
+      // replaces (4000) the current one.
+      if (gen !== this.generation) return void ws.terminate();
       opened = true;
       this.sendBoot();
     });
@@ -256,8 +262,11 @@ export class Station {
     if (wasReady) this.ctx.onConnectionChange(this, false);
     this.settle(false);
     if (code === 4000) {
-      this.ctx.log.warn({ stationId: this.id }, 'connection replaced by the CSMS (4000); not reconnecting');
-      this.wantOnline = false;
+      // Replaced by a newer connection with our identity. Usually a late duplicate of our own; firmware keeps trying, so
+      // come back after a long jittered pause instead of fighting a real duplicate every second.
+      const pauseMs = 10_000 + Math.floor(this.ctx.rng() * 20_000);
+      this.ctx.log.warn({ stationId: this.id, pauseMs }, 'connection replaced by the CSMS (4000); reconnecting after a pause');
+      this.scheduleReconnect(pauseMs);
       return;
     }
     this.scheduleReconnect(0);
@@ -266,7 +275,7 @@ export class Station {
   // ---------------------------------------------------------------- OCPP transport
 
   private nextId(): string {
-    return `${this.id}-${(++this.counter).toString(36)}`;
+    return `${this.id}-${BOOT}-${(++this.counter).toString(36)}`;
   }
 
   private rawSend(frame: unknown[], action: string): boolean {

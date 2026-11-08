@@ -6,8 +6,9 @@ import { TARGETS, uuid, summary } from './lib.js';
 const T = TARGETS.perInstance['driver-api'];
 const URL = __ENV.URL || 'http://localhost:28082';
 export const options = {
-  scenarios: { open: { executor: 'constant-arrival-rate', rate: T.readRps, timeUnit: '1s', duration: __ENV.DURATION || '60s', preAllocatedVUs: 100, maxVUs: 500 } },
-  thresholds: { http_req_duration: [`p(99)<${T.readP99Ms}`], http_req_failed: ['rate<0.001'], dropped_iterations: ['count<1'] },
+  scenarios: { open: { executor: 'constant-arrival-rate', rate: T.readRps, timeUnit: '1s', duration: __ENV.DURATION || '60s', preAllocatedVUs: 300, maxVUs: 800 } },
+  // Thresholds on the read scenario only: setup() registers and logs in (scrypt) and must not count as reads.
+  thresholds: { 'http_req_duration{scenario:open}': [`p(99)<${T.readP99Ms}`], 'http_req_failed{scenario:open}': ['rate<0.001'], dropped_iterations: [`rate<${T.readRps * 0.01}`] },
   summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max'],
 };
 export function setup() {

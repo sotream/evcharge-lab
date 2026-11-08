@@ -1,4 +1,4 @@
-import { SpanKind } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { ocpp } from '@evcharge/contracts';
 import { HttpError, inSpan, makeEnvelope, sleep, type Logger } from '@evcharge/platform';
 import { WebSocket, type RawData } from 'ws';
@@ -73,11 +73,20 @@ export class StationConnection {
   /** Queues a CSMS -> station command; `done` receives the outcome. */
   command(action: CsmsAction, payload: Record<string, unknown>, done: OutboundCommand['onDone'], expiresAtMs?: number): void {
     const t0 = performance.now();
+    // Child of the active span: the `command <action>` consumer span (which carries the command's traceparent) or the Boot CALL span.
+    // shortcut: starts at enqueue, so it includes time queued behind the one outstanding CALL; fine while queues are short.
+    const span = trace.getTracer('@evcharge/station-gateway').startSpan(`ocpp ${action} call`, {
+      kind: SpanKind.CLIENT,
+      attributes: { 'ocpp.action': action, 'ocpp.station_id': this.stationId, 'ocpp.gateway': this.ctx.instance },
+    });
     this.channel.enqueue({
       action,
       payload,
       ...(expiresAtMs !== undefined ? { expiresAtMs } : {}),
       onDone: (outcome, response) => {
+        span.setAttribute('ocpp.result', outcome);
+        if (outcome === 'Error' || outcome === 'Timeout') span.setStatus({ code: SpanStatusCode.ERROR, message: outcome });
+        span.end();
         this.ctx.metrics.commands.inc({ action, outcome });
         if (outcome === 'Accepted' || outcome === 'Rejected' || outcome === 'Error' || outcome === 'Timeout') this.ctx.metrics.commandDuration.observe({ action }, (performance.now() - t0) / 1000);
         if (action === 'SetChargingProfile' && outcome === 'Accepted') this.trackProfile(payload);
@@ -113,27 +122,30 @@ export class StationConnection {
     const t0 = performance.now();
     const label = knownAction(action);
     const observe = (outcome: string) => this.ctx.metrics.callDuration.observe({ action: label, outcome }, (performance.now() - t0) / 1000);
-    const v = validateStationCall(action, payload);
-    if (!v.ok) {
-      this.sendError(uniqueId, v.code, v.description, label);
-      observe(v.code);
-      return;
-    }
-    await inSpan(`ocpp ${label}`, { kind: SpanKind.SERVER, attributes: { 'ocpp.station_id': this.stationId, 'ocpp.unique_id': uniqueId, 'ocpp.action': label } }, async (span) => {
-      try {
-        const conf = await this.dispatch(action as ocpp.StationAction, uniqueId, v.value);
-        this.sendResult(uniqueId, conf, label);
-        observe('ok');
-        if (action === 'BootNotification') this.afterBoot();
-      } catch (err) {
-        const code: OcppErrorCode = err instanceof OcppError ? err.code : 'InternalError';
-        const description = err instanceof OcppError ? err.message : err instanceof BufferFullError ? 'backend busy' : 'backend unavailable';
-        span.setAttribute('ocpp.error_code', code);
-        if (!(err instanceof OcppError)) this.ctx.logger.warn({ stationId: this.stationId, uniqueId, action, err: errorMessage(err) }, 'CALL failed');
-        this.sendError(uniqueId, code, description, label);
-        observe(code);
-      }
-    });
+    await inSpan(
+      `ocpp ${label}`,
+      { kind: SpanKind.SERVER, attributes: { 'ocpp.action': label, 'ocpp.unique_id': uniqueId, 'ocpp.station_id': this.stationId, 'ocpp.gateway': this.ctx.instance } },
+      async (span) => {
+        const fail = (code: OcppErrorCode, description: string) => {
+          span.setAttributes({ 'ocpp.result': code, 'ocpp.error_code': code });
+          if (code === 'InternalError') span.setStatus({ code: SpanStatusCode.ERROR, message: description });
+          this.sendError(uniqueId, code, description, label);
+          observe(code);
+        };
+        const v = validateStationCall(action, payload);
+        if (!v.ok) return fail(v.code, v.description);
+        try {
+          const conf = await this.dispatch(action as ocpp.StationAction, uniqueId, v.value);
+          this.sendResult(uniqueId, conf, label);
+          span.setAttribute('ocpp.result', 'ok');
+          observe('ok');
+          if (action === 'BootNotification') this.afterBoot();
+        } catch (err) {
+          if (!(err instanceof OcppError)) this.ctx.logger.warn({ stationId: this.stationId, uniqueId, action, err: errorMessage(err) }, 'CALL failed');
+          fail(err instanceof OcppError ? err.code : 'InternalError', err instanceof OcppError ? err.message : err instanceof BufferFullError ? 'backend busy' : 'backend unavailable');
+        }
+      },
+    );
   }
 
   private async dispatch(action: ocpp.StationAction, uniqueId: string, req: unknown): Promise<Record<string, unknown>> {
@@ -171,6 +183,8 @@ export class StationConnection {
         } catch (err) {
           throw new OcppError('TypeConstraintViolation', errorMessage(err));
         }
+        const replayed = isReplayed(readings, Date.now(), this.ctx.replayThresholdS);
+        trace.getActiveSpan()?.setAttribute('ocpp.replayed', replayed);
         await publisher.publish(
           topics.meterValues,
           makeEnvelope(
@@ -181,7 +195,7 @@ export class StationConnection {
               connectorId: r.connectorId,
               ...(r.transactionId !== undefined ? { transactionId: r.transactionId } : {}),
               ocppMessageId: uniqueId,
-              replayed: isReplayed(readings, Date.now(), this.ctx.replayThresholdS),
+              replayed,
               readings,
             },
             PRODUCER,
