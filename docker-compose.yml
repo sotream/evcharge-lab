@@ -279,6 +279,8 @@ services:
       SERVICE_NAME: billing
       DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/billing
       TARIFF_URL: http://tariff:8080
+      # The simulator gives one in ten drivers this card, so the decline and compensation path runs in the lab.
+      PSP_DECLINE_TOKENS: tok_decline
     ports: ["28083:8080"]
 
   telemetry-ingest:
@@ -316,6 +318,15 @@ services:
       BILLING_URL: http://billing:8080
       TELEMETRY_URL: http://telemetry-ingest:8080
       JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me-at-least-32-chars}
+      # The simulator runs all of its virtual drivers from one IP, so the production per-IP limits (10/min) would
+      # throttle the lab itself. Raised here for the lab only; the service defaults stay at 10 per minute.
+      LOGIN_RATE_LIMIT: ${DRIVER_LOGIN_RATE_LIMIT:-5000}
+      REGISTER_RATE_LIMIT: ${DRIVER_REGISTER_RATE_LIMIT:-5000}
+      # No reverse proxy in front of driver-api in compose (the port is published directly): trust no
+      # x-forwarded-for hop, so the client IP is the socket address. Set the hop count when a load balancer is added.
+      TRUST_PROXY: "0"
+      # scrypt runs on the libuv threadpool (default 4 threads): a burst of logins would queue behind it.
+      UV_THREADPOOL_SIZE: "16"
     ports: ["28082:8080"]
 
   # ---------------------------------------------------------------- traffic

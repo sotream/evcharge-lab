@@ -290,9 +290,9 @@ export class Simulator {
         headers: { 'x-internal-token': INTERNAL_TOKEN, 'x-driver-id': randomUUID() },
         signal: AbortSignal.timeout(15_000),
       });
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`sites ${res.status}`);
       const parsed = api.SessionsPublic.listSitesRes.safeParse(await res.json());
-      if (!parsed.success) return;
+      if (!parsed.success) throw new Error('sites: unexpected body');
       for (const s of parsed.data.sites) {
         const site = this.sites.get(s.siteId);
         if (site) {
@@ -302,6 +302,8 @@ export class Simulator {
       }
     } catch (err) {
       this.log.debug({ err: errorMessage(err) }, 'site caps not refreshed from sessions');
+      // sessions may still be starting: retry soon instead of waiting for the 5 min refresh.
+      if (!this.stopped) setTimeout(() => void this.refreshCaps(), 15_000).unref();
     }
   }
 

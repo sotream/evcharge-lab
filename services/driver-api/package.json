@@ -1,0 +1,35 @@
+{
+  "name": "@evcharge/driver-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Driver-facing API: authentication (ADR 0010) and a verified-identity proxy to sessions, billing and telemetry.",
+  "type": "commonjs",
+  "main": "dist/main.js",
+  "files": ["dist", "migrations"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run --project unit",
+    "test:int": "vitest run --project int",
+    "start": "node --enable-source-maps dist/main.js"
+  },
+  "dependencies": {
+    "@evcharge/contracts": "workspace:*",
+    "@evcharge/platform": "workspace:*",
+    "@nestjs/common": "^12.4.0",
+    "@nestjs/core": "^12.4.0",
+    "@nestjs/platform-fastify": "^12.4.0",
+    "fastify": "^5.12.8",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
