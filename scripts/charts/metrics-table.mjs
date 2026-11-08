@@ -2,7 +2,7 @@
 import * as D from './data.mjs';
 
 const T = D.targets.perInstance;
-const link = (f) => `[\`${f.split('/').pop()}\`](${f})`;
+const link = (f, prefix = '') => `[\`${f.split('/').pop()}\`](${prefix}${f})`;
 const n = (v, u = '') => v === null || v === undefined ? 'no measurement' : `${Number(v.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 })}${u ? ' ' + u : ''}`;
 const verdict = (ok) => (ok ? 'met' : '**MISSED**');
 // Verdict computed from the numbers alone: no tolerance.
@@ -124,10 +124,11 @@ export function metricsRows() {
   return rows;
 }
 
-export function metricsMarkdown() {
+// prefix: path from the file that holds the table to the repo root ('../' for docs/metrics.md).
+export function metricsMarkdown(prefix = '') {
   const rows = metricsRows();
   const head = '| Metric | Target | Value | Label | Source file | Formula |\n|---|---|---|---|---|---|\n';
-  const body = rows.map((r) => `| ${r.metric} | ${r.target} | ${r.value} | ${r.label} | ${r.sources.filter(Boolean).map(link).join(', ')} | ${r.formula ? `\`${r.formula}\`` : ''} |`).join('\n');
+  const body = rows.map((r) => `| ${r.metric} | ${r.target} | ${r.value} | ${r.label} | ${r.sources.filter(Boolean).map((f) => link(f, prefix)).join(', ')} | ${r.formula ? `\`${r.formula}\`` : ''} |`).join('\n');
   const nt = rows.filter((r) => r.note).map((r) => `- **${r.metric}:** ${r.note}`).join('\n');
   return head + body + '\n' + (nt ? `\nNotes on individual rows:\n\n${nt}\n` : '');
 }

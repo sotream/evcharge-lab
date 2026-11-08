@@ -1,8 +1,50 @@
-# evcharge-lab
+<h1 align="center">evcharge-lab</h1>
 
-[![CI](https://github.com/sotream/evcharge-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/sotream/evcharge-lab/actions/workflows/ci.yml)
+<p align="center">
+  <b>The charge point operator side of an EV charging platform, built as a system-design lab.</b><br>
+  Hold thousands of station WebSockets, take reservations without double-booking, split a site power cap, bill exactly once, absorb telemetry bursts.
+</p>
 
-evcharge-lab is the charge point operator (CPO) side of an EV charging platform, built as a system-design lab. Seven services (NestJS and Go) and an OCPP 1.6J station simulator answer concrete questions: how to hold thousands of long-lived WebSockets across several instances, how to take reservations under contention without double-booking, how to split a hard site power cap fairly and safely, how to get an exactly-once billing effect out of at-least-once delivery, and how to absorb a bursty telemetry stream. Every decision is written down in an [ADR](docs/adr/README.md) against explicit load targets ([ADR 0000](docs/adr/0000-requirements-and-capacity.md)). The numbers in the generated blocks of this README (the metrics table and the charts) are read from raw files in `docs/load-output/` and `docs/drill-output/` by a script, labelled as measured or derived, and the targets that were missed stay visible as missed. The prose in "What the drills and reviews caught" and "Known limits" also quotes numbers; those were observed during the build, and each one is labelled as measured (with its file), derived (with its formula), observed but not saved as a file, or a review scenario.
+<p align="center">
+  <a href="https://github.com/sotream/evcharge-lab/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/sotream/evcharge-lab/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/sotream/evcharge-lab/actions/workflows/images.yml"><img alt="images" src="https://github.com/sotream/evcharge-lab/actions/workflows/images.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow"></a>
+  <img alt="Node 26" src="https://img.shields.io/badge/Node-26-5FA04E?logo=nodedotjs&logoColor=white">
+  <img alt="TypeScript 7" src="https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white">
+  <img alt="NestJS 12" src="https://img.shields.io/badge/NestJS-12-E0234E?logo=nestjs&logoColor=white">
+  <img alt="Go 1.27" src="https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white">
+  <img alt="PostgreSQL 18" src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white">
+  <img alt="TimescaleDB 2.24" src="https://img.shields.io/badge/TimescaleDB-2.24-FDB515?logo=timescale&logoColor=black">
+  <img alt="Apache Kafka 4.3 (KRaft)" src="https://img.shields.io/badge/Apache%20Kafka%20(KRaft)-4.3-231F20?logo=apachekafka&logoColor=white">
+  <img alt="Redis 8" src="https://img.shields.io/badge/Redis-8-FF4438?logo=redis&logoColor=white">
+  <img alt="OCPP 1.6J" src="https://img.shields.io/badge/OCPP-1.6J-0A7E8C">
+  <img alt="k6" src="https://img.shields.io/badge/load%20tests-k6-7D64FF?logo=k6&logoColor=white">
+</p>
+
+<p align="center">
+  <a href="#architecture">Architecture</a> &middot;
+  <a href="#5-minute-quick-start">Quick start</a> &middot;
+  <a href="#the-system-design-question-each-service-answers">Services</a> &middot;
+  <a href="#distributed-systems-guarantees">Guarantees</a> &middot;
+  <a href="#results">Results</a> &middot;
+  <a href="#drills">Drills</a> &middot;
+  <a href="#what-the-drills-and-reviews-caught">Findings</a> &middot;
+  <a href="#known-limits-and-production-gaps">Known limits</a> &middot;
+  <a href="docs/adr/README.md">ADRs</a> &middot;
+  <a href="docs/runbook.md">Runbook</a>
+</p>
+
+> **Status:** a learning and design lab, not a production system. Its known gaps are listed in [Known limits](#known-limits-and-production-gaps).
+
+<!-- stats:start -->
+| 7 services | 21 ADRs | 12 drill scripts | 18 of 19 drills pass on the latest run | 23 of 23 findings fixed |
+|:---:|:---:|:---:|:---:|:---:|
+| [NestJS and Go, plus a station simulator](#the-system-design-question-each-service-answers) | [one decision per file](docs/adr/README.md) | [failure drills](#drills) | [12 failed runs kept as evidence](docs/drills.md) | [found by drills, k6 and reviews](#what-the-drills-and-reviews-caught) |
+<!-- stats:end -->
+
+## Architecture
+
+evcharge-lab is the charge point operator (CPO) side of an EV charging platform, built as a system-design lab. Seven services (NestJS and Go) and an OCPP 1.6J station simulator answer concrete questions: how to hold thousands of long-lived WebSockets across several instances, how to take reservations under contention without double-booking, how to split a hard site power cap fairly and safely, how to get an exactly-once billing effect out of at-least-once delivery, and how to absorb a bursty telemetry stream. Every decision is written down in an [ADR](docs/adr/README.md) against explicit load targets ([ADR 0000](docs/adr/0000-requirements-and-capacity.md)). The numbers in the generated blocks of this README (the targets table, the charts, the drills table and the findings table) and in [`docs/metrics.md`](docs/metrics.md) and [`docs/drills.md`](docs/drills.md) are read from raw files in `docs/load-output/` and `docs/drill-output/` by a script, labelled as measured or derived, and the targets that were missed stay visible as missed. The prose in "What the drills and reviews caught" and "Known limits" also quotes numbers; those were observed during the build, and each one is labelled as measured (with its file), derived (with its formula), observed but not saved as a file, or a review scenario.
 
 ![architecture](docs/img/architecture.svg)
 
@@ -70,282 +112,44 @@ Cross-cutting decisions: [0000](docs/adr/0000-requirements-and-capacity.md) requ
 
 ## Results
 
-The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. [ADR 0000](docs/adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine; the raw files record only `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory, and (in `docs/load-output/*.env.json`) the containers running during each run. No raw file of the earlier runs (stage 7) records the laptop model. The Wave 3 drills (`replica-lag`, `kraft-quorum-loss`, and the 24 h `station-offline-replay` of 20261108T190213Z) ran on an Apple M4 Pro (12 CPUs, 24 GiB) with a Docker VM of 8 CPUs and 11.7 GiB, recorded in each `env.json`. They are not mixed into one series with the earlier runs. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from ADR 0000. The chart shows each measured value divided by its target.
+The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, so a missed target stays visible as missed. The machines are named in the setup note below.
 
-![targets vs measured](docs/img/targets-vs-measured.svg)
+<details>
+<summary>Measurement setup</summary>
 
-How to read it: every verdict compares the measured value with the target, with no tolerance. The **station gateway misses its message-rate and CALLRESULT p99 targets** in the 2,000-station run, which is the only run that offers enough load to test the rate (see [Known limits](#known-limits-and-production-gaps)); the 1,000-station run cannot test a 2,000 msg/s target and is labelled "not tested", but it also missed the CALLRESULT p99 target (1,446 ms against 500 ms, `ocpp_callresult_ms` p(99) in `k6-gateway-ws-1000st-1hz.json`). The gateway does hold 10,000 WebSocket connections. The sessions rate (199.99 against 200) and the driver-api read rate (955.59 against 1,000) are below their targets and are drawn as misses; the notes under the metrics table explain each (a 60.003 s run for sessions, and setup requests plus dropped iterations for driver-api). The telemetry-ingest sustained rate at the target offered rate (2,471.23 against 2,500) is also a miss. The smart-charging (999.97 against 1,000) and tariff (1,999.97 against 2,000) k6 rates are drawn as misses too; they are duration artefacts, explained in the notes under the metrics table. The closed-loop saturation figures in the table (for example 10,507.2 allocations/s and 14,399.8 quotes/s) are best-case benchmarks, not the charted verdicts.
+[ADR 0000](docs/adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine; the raw files record only `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory, and (in `docs/load-output/*.env.json`) the containers running during each run. No raw file of the earlier runs (stage 7) records the laptop model. The Wave 3 drills (`replica-lag`, `kraft-quorum-loss`, and the 24 h `station-offline-replay` of 20261108T190213Z) ran on an Apple M4 Pro (12 CPUs, 24 GiB) with a Docker VM of 8 CPUs and 11.7 GiB, recorded in each `env.json`. They are not mixed into one series with the earlier runs. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from ADR 0000.
 
-### Metrics table
+</details>
 
-Labels: **measured** is a value read from a raw file; **derived** is calculated from raw values with the formula shown; **measured (PromQL increase, extrapolated)** is a drill count from a Prometheus `increase()`, which extrapolates to the window edges and is therefore a float. Rows marked "not tested" had an offered load below the target. Values are rounded to at most two decimals; nothing else is changed. `n/a` in the target column means the raw file records no target for that figure. This table is generated by `node scripts/charts/build.mjs`.
+### Targets at a glance
 
-<!-- metrics:start (generated by scripts/charts/build.mjs) -->
-| Metric | Target | Value | Label | Source file | Formula |
+One row per target in `load/targets.json`. The full metrics table, with every row, label, source file, formula and note, is in [`docs/metrics.md`](docs/metrics.md).
+
+<!-- glance:start -->
+| Service | Metric | Target | Measured | Verdict | Source |
 |---|---|---|---|---|---|
-| Gateway: WebSocket connections on one instance | ≥ 10,000 | 10,000 (met) | measured | [`gateway-10k-connections.json`](docs/load-output/gateway-10k-connections.json) |  |
-| Gateway: peak RSS at that load | < 1.5 GB | 525 MB | measured | [`gateway-10k-connections.json`](docs/load-output/gateway-10k-connections.json) |  |
-| Gateway: inbound OCPP frames/s, 10,000 simulated stations, stub sessions (not the pass/fail run) | n/a | peak 6,918; last-30 s average 5,521 | measured | [`gateway-10k-connections.json`](docs/load-output/gateway-10k-connections.json) |  |
-| Gateway: msg/s, 1000 stations at 1 msg/s (k6) | ≥ 2,000 | 910.28 (not tested: offered load is at most 1,000 msg/s) | measured; offered load derived | [`k6-gateway-ws-1000st-1hz.json`](docs/load-output/k6-gateway-ws-1000st-1hz.json), [`k6-gateway-ws-1000st-1hz.env.json`](docs/load-output/k6-gateway-ws-1000st-1hz.env.json) | `offered = stations × Hz (one outstanding CALL per station)` |
-| Gateway: CALLRESULT p99, 1000 stations, at 910.28 msg/s achieved (k6) | ≤ 500 ms | 1,446 ms (**MISSED**); p50 9 ms; CALLERROR 0 | measured | [`k6-gateway-ws-1000st-1hz.json`](docs/load-output/k6-gateway-ws-1000st-1hz.json), [`k6-gateway-ws-1000st-1hz.env.json`](docs/load-output/k6-gateway-ws-1000st-1hz.env.json) |  |
-| Gateway: msg/s, 2000 stations at 1 msg/s (k6) | ≥ 2,000 | 1,139.03 (**MISSED**) | measured | [`k6-gateway-ws-2000st-1hz.json`](docs/load-output/k6-gateway-ws-2000st-1hz.json), [`k6-gateway-ws-2000st-1hz.env.json`](docs/load-output/k6-gateway-ws-2000st-1hz.env.json) |  |
-| Gateway: CALLRESULT p99, 2000 stations, at 1,139.03 msg/s achieved (k6) | ≤ 500 ms | 3,228 ms (**MISSED**); p50 137 ms; CALLERROR 0 | measured | [`k6-gateway-ws-2000st-1hz.json`](docs/load-output/k6-gateway-ws-2000st-1hz.json), [`k6-gateway-ws-2000st-1hz.env.json`](docs/load-output/k6-gateway-ws-2000st-1hz.env.json) |  |
-| Telemetry ingest: sustained rows/s at 2,500 rows/s offered (COPY) | ≥ 2,500 | 2,471.23 (**MISSED**; keeping up: true, defined as all produced rows durable within 5 s after the produce phase ended and durable lag p99 < 5 s) | measured | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |  |
-| Telemetry ingest: durable lag p99 at that rate | ≤ 5,000 ms | 942.95 ms (met) | derived | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) | `measured_durable_lag_p99_s × 1000` |
-| Telemetry ingest: highest offered rate that kept up (COPY) | ≥ 2,500 | 20,000 offered, 18,109.07 sustained (met), lag p99 4.09 s | measured | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |  |
-| Telemetry ingest: peak sustained rows/s (COPY, did not keep up) | n/a | 24,597.61 at 40,000 offered; lag p99 14.73 s | measured | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |  |
-| Telemetry ingest: row-by-row INSERT baseline | n/a | keeps up to 500 offered; peak sustained 755.93 | measured | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |  |
-| Telemetry ingest: loss ratio at the target rate | ≤ 0.0001 | 0 (met; 49998 produced, 49998 inserted) | derived | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) | `(rows_produced - rows_inserted) / rows_produced` |
-| Backfill: load rate (5,000 stations, 7 days) | n/a | 106,504 rows/s (20,216,542 rows in 189.82 s) | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage: compression ratio, compressed raw chunks / all chunks | n/a | 10.27 x / 4.41 x | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage: compression ratio, power_1m compressed chunks | n/a | 21.19 x | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage query: latestPerConnectorForStation | n/a | p50 5.28 ms, p95 23.36 ms, p99 36.59 ms (300 runs) | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage query: power1mOneSiteOneDayCompressed | n/a | p50 5 ms, p95 9.82 ms, p99 12.96 ms (300 runs) | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage query: power1mOneSiteOneDayRecent | n/a | p50 5.24 ms, p95 12.47 ms, p99 19.18 ms (300 runs) | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage query: sessionReadingsCompressedChunks | n/a | p50 7.7 ms, p95 13.58 ms, p99 28.6 ms (300 runs) | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Storage query: sessionReadingsRecentChunks | n/a | p50 2.02 ms, p95 3.45 ms, p99 4.29 ms (300 runs) | measured | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) |  |
-| Full fleet (50,000 stations): raw90dSizeGB | n/a | 59.4 GB | derived | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) | `rowsPerDayFullFleet * (bytesPerRowCompressed * 89 + bytesPerRowUncompressed * 1)` |
-| Full fleet (50,000 stations): rollup2ySizeGB | n/a | 85.7 GB | derived | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) | `power1mRows / days * (50000 / stations) * (7 * rollupBytesPerRowUncompressed + 723 * rollupBytesPerRowCompressed)` |
-| Full fleet (50,000 stations): totalSizeGB | n/a | 145.1 GB | derived | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) | `raw90dSizeGB + rollup2ySizeGB` |
-| Full fleet: average ingest | n/a | 334 rows/s | derived | [`telemetry-backfill-20261108T082949Z.json`](docs/load-output/telemetry-backfill-20261108T082949Z.json) | `rowsPerDayFullFleet / 86400` |
-| Sessions: commands/s at 50 offered (k6) | n/a | 50.03; p99 start 314.44 ms, stop 130.48 ms (script threshold < 500 ms: start met, stop met); dropped 0 | measured | [`k6-sessions-ocpp-rate50.json`](docs/load-output/k6-sessions-ocpp-rate50.json), [`k6-sessions-ocpp-rate50.env.json`](docs/load-output/k6-sessions-ocpp-rate50.env.json) |  |
-| Sessions: commands/s at 100 offered (k6) | n/a | 99.77; p99 start 94.75 ms, stop 57.23 ms (script threshold < 500 ms: start met, stop met); dropped 0 | measured | [`k6-sessions-ocpp-rate100.json`](docs/load-output/k6-sessions-ocpp-rate100.json), [`k6-sessions-ocpp-rate100.env.json`](docs/load-output/k6-sessions-ocpp-rate100.env.json) |  |
-| Sessions: commands/s at 150 offered (k6) | n/a | 149.98; p99 start 621.77 ms, stop 482.01 ms (script threshold < 500 ms: start **MISSED**, stop met); dropped 0 | measured | [`k6-sessions-ocpp-rate150.json`](docs/load-output/k6-sessions-ocpp-rate150.json), [`k6-sessions-ocpp-rate150.env.json`](docs/load-output/k6-sessions-ocpp-rate150.env.json) |  |
-| Sessions: commands/s at 200 offered (k6) | ≥ 200 | 199.99 (**MISSED**); p99 start 177.39 ms, stop 124.54 ms (script threshold < 500 ms: start met, stop met); dropped 0 | measured | [`k6-sessions-ocpp-rate200.json`](docs/load-output/k6-sessions-ocpp-rate200.json), [`k6-sessions-ocpp-rate200.env.json`](docs/load-output/k6-sessions-ocpp-rate200.env.json) |  |
-| Sessions: one allocation round for 5,000 sites, 15,000 active sessions (2 instances, concurrency 8 each) | ≤ 60 s | 7.32 s (met; 683.53 rounds/s, 15,000 SetChargingProfile commands). Setup recorded in the file: stub allocator on localhost, Postgres/Redis on the compose infra, workers off (no outbox relay); wall clock from start() to every site having completed a round | measured | [`sessions-allocation-rounds.json`](docs/load-output/sessions-allocation-rounds.json) |  |
-| Reservations: concurrent attempts on one connector, winners / conflicts | exactly 1 winner | 1 / 99 | measured | [`k6-reservation-contention.json`](docs/load-output/k6-reservation-contention.json), [`k6-reservation-contention.env.json`](docs/load-output/k6-reservation-contention.env.json) |  |
-| Reservations: double bookings | 0 | 0 | derived | [`k6-reservation-contention.json`](docs/load-output/k6-reservation-contention.json) | `reservation_won - 1` |
-| Smart charging: saturation-c16 (closed-loop) | ≥ 1,000 /s, p99 ≤ 20 ms | 10,507.2 /s, p99 9.77 ms (met), 0 cap violations | measured | [`smart-charging-allocbench.json`](docs/load-output/smart-charging-allocbench.json) |  |
-| Smart charging: fixed-rate-1000 (open-loop) | ≥ 1,000 /s, p99 ≤ 20 ms | 1,000.02 /s, p99 19.45 ms (met), 0 cap violations | measured | [`smart-charging-allocbench.json`](docs/load-output/smart-charging-allocbench.json) |  |
-| Smart charging: server-side invariant violations | 0 | 0 over 408642 allocations | measured | [`smart-charging-allocbench.json`](docs/load-output/smart-charging-allocbench.json) |  |
-| Smart charging: k6 against the service | ≥ 1,000 /s, p99 ≤ 20 ms | 999.97 /s (**MISSED**), p99 11.72 ms (met) | measured | [`k6-smart-charging.json`](docs/load-output/k6-smart-charging.json), [`k6-smart-charging.env.json`](docs/load-output/k6-smart-charging.env.json) |  |
-| Tariff: closed loop, concurrency 8 | ≥ 2,000 /s, p99 ≤ 20 ms | 9,095.7 /s, p99 4.01 ms (met) | measured | [`tariff-quotebench-c8.json`](docs/load-output/tariff-quotebench-c8.json) |  |
-| Tariff: open loop at 2,000 quotes/s | ≥ 2,000 /s, p99 ≤ 20 ms | 2,000 /s, p99 13.9 ms (met) | measured | [`tariff-quotebench-openloop.json`](docs/load-output/tariff-quotebench-openloop.json) |  |
-| Tariff: closed loop, concurrency 32 | ≥ 2,000 /s, p99 ≤ 20 ms | 14,399.8 /s, p99 7.96 ms (met) | measured | [`tariff-quotebench.json`](docs/load-output/tariff-quotebench.json) |  |
-| Tariff: k6 against the service | ≥ 2,000 /s, p99 ≤ 20 ms | 1,999.97 /s (**MISSED**), p99 5.14 ms (met) | measured | [`k6-tariff.json`](docs/load-output/k6-tariff.json), [`k6-tariff.env.json`](docs/load-output/k6-tariff.env.json) |  |
-| Driver API: read requests/s (GET /v1/sites, k6) | ≥ 1,000 | 955.59 (**MISSED**); 331 of 60000 iterations dropped | measured | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json), [`k6-driver-api-reads.env.json`](docs/load-output/k6-driver-api-reads.env.json) |  |
-| Driver API: read p99 | ≤ 300 ms | 255.2 ms (met) | measured | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json), [`k6-driver-api-reads.env.json`](docs/load-output/k6-driver-api-reads.env.json) |  |
-| Simulator: 10,000 stations at time scale 1 | n/a | all connected after 5 s; peak 8,141 msg/s at the stub; peak RSS 253 MB; event-loop lag max 37.49 ms | measured | [`simulator-scale-10k-scale1.jsonl`](docs/load-output/simulator-scale-10k-scale1.jsonl) |  |
-| Simulator: 10,000 stations at time scale 60 | n/a | all connected after 6 s; peak 14,956 msg/s at the stub; peak RSS 529 MB; event-loop lag max 134.35 ms | measured | [`simulator-scale-10k-scale60.jsonl`](docs/load-output/simulator-scale-10k-scale60.jsonl) |  |
-| Drill consumer-rebalance (20261108T214311Z): fleet_connected_before | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): both_instances_balanced_before | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): rebalance_after_kill_s | ≤ 60 | 48 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): rebalance_after_restart_s | ≤ 60 | 3 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): lag_drained_s | ≤ 180 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): probe_readings_generated | ≥ 1 | 3,640 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): forced_redelivery_records_suppressed | ≥ 1 | 4,800 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): forced_redelivery_lag_drained_s | ≤ 180 | 1 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214311Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): fleet_connected_before | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): both_instances_balanced_before | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): rebalance_after_kill_s | ≤ 60 | 48 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): rebalance_after_restart_s | ≤ 60 | 2 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): lag_drained_s | ≤ 180 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): probe_readings_generated | ≥ 1 | 6,580 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): forced_redelivery_records_suppressed | ≥ 1 | 4,800 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): forced_redelivery_lag_drained_s | ≤ 180 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill consumer-rebalance (20261108T214804Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
-| Drill gateway-instance-loss (20261108T115832Z): stations_reconnected_within_s | ≤ 60 | no measurement (**FAIL**) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json) |  |
-| Drill gateway-instance-loss (20261108T115832Z): routes_present_after_loss | ≥ 200 | 199 (**FAIL**) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json) |  |
-| Drill gateway-instance-loss (20261108T115832Z): fleet_connected_after_recovery | ≥ 200 | 199 (**FAIL**) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json) |  |
-| Drill gateway-instance-loss (20261108T122353Z): stations_reconnected_within_s | ≤ 60 | 31 (pass) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T122353Z/result.json) |  |
-| Drill gateway-instance-loss (20261108T122353Z): routes_present_after_loss | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T122353Z/result.json) |  |
-| Drill gateway-instance-loss (20261108T122353Z): fleet_connected_after_recovery | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T122353Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T122708Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T122708Z): producer_recovery_s | ≤ 60 | 0 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T122708Z): probe_readings_generated | ≥ 1 | 100 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T122708Z): probe_readings_missing | = 0 | 30 (**FAIL**) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T140530Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T140530Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T140530Z): producer_recovery_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T140530Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T140530Z): probe_readings_generated | ≥ 1 | 96 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T140530Z/result.json) |  |
-| Drill kafka-broker-loss-1 (20261108T140530Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-1-20261108T140530Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T123144Z): gateway_ready_during_outage | = 200 | 0 (**FAIL**) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T123144Z): producer_recovery_s | ≤ 60 | 0 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T123144Z): max_produce_errors_per_s_during_outage | ≥ 0.01 | 34.79 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T123144Z): max_produce_buffer_depth | ≥ 1 | 549 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T123144Z): probe_readings_generated | ≥ 1 | 280 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T123144Z): probe_readings_missing | = 0 | 126 (**FAIL**) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T140952Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T140952Z): producer_recovery_s | ≤ 60 | 0 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T140952Z): max_produce_errors_per_s_during_outage | ≥ 0.01 | 7.2 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T140952Z): max_produce_buffer_depth | ≥ 1 | 187 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T140952Z): probe_readings_generated | ≥ 1 | 254 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
-| Drill kafka-broker-loss-2 (20261108T140952Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): gateway_live_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): fleet_connected_during_outage | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): topic_create_failed_during_outage | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): remote_stop_sent_during_outage | = 0 | 2 (**FAIL**) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): time_to_quorum_s | ≤ 60 | 5 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): time_to_first_produce_s | ≤ 90 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): time_to_zero_produce_errors_s | ≤ 120 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): max_produce_errors_per_s_during_outage | ≥ 0.01 | 65.61 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): min_active_sessions_during_outage | ≥ 1 | 180 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): probe_readings_generated | ≥ 1 | 158 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T184440Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T184440Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): gateway_live_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): gateway_ready_during_outage | = 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): fleet_connected_during_outage | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): topic_create_failed_during_outage | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): remote_stop_sent_during_outage | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): time_to_quorum_s | ≤ 60 | 4 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): time_to_first_produce_s | ≤ 90 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): time_to_zero_produce_errors_s | ≤ 120 | 8 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): max_produce_errors_per_s_during_outage | ≥ 0.01 | 66.2 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): min_active_sessions_during_outage | ≥ 1 | 186 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): probe_readings_generated | ≥ 1 | 393 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill kraft-quorum-loss (20261108T185039Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): probe_acks_before_kill | ≥ 100 | 2,688 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): reserve_ok_before_kill | ≥ 1 | 92 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): rto_db_write_s | ≤ 60 | 0.46 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): rto_driver_reservation_s | ≤ 60 | 10.27 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): probe_acks_before_kill | ≥ 100 | 2,701 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): reserve_ok_before_kill | ≥ 1 | 80 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): rto_db_write_s | ≤ 60 | 0.48 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): rto_driver_reservation_s | ≤ 60 | 1.19 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): acknowledged_probe_writes_lost | = 0 | 282 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): history_checker_violations | = 0 | 1 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): probe_acks_before_kill | ≥ 100 | 2,703 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): reserve_ok_before_kill | ≥ 1 | 87 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): rto_db_write_s | ≤ 60 | 0.37 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): rto_driver_reservation_s | ≤ 60 | 10.09 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): acknowledged_probe_writes_lost | = 0 | 281 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): history_checker_violations | = 0 | 1 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): probe_acks_before_kill | ≥ 100 | 2,653 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): reserve_ok_before_kill | ≥ 1 | 85 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): rto_db_write_s | ≤ 60 | 0.36 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): rto_driver_reservation_s | ≤ 60 | 1.1 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): probe_acks_before_kill | ≥ 100 | 2,643 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): reserve_ok_before_kill | ≥ 1 | 84 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): rto_db_write_s | ≤ 60 | 0.38 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): rto_driver_reservation_s | ≤ 60 | 9.93 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): probe_acks_before_kill | ≥ 100 | 2,659 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): reserve_ok_before_kill | ≥ 1 | 94 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): rto_db_write_s | ≤ 60 | 0.4 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): rto_driver_reservation_s | ≤ 60 | 9.93 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
-| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
-| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): probe_acks_before_kill | ≥ 100 | 2,717 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
-| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): reserve_ok_before_kill | ≥ 1 | 29 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
-| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
-| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
-| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
-| Drill reconnect-storm (20261108T120311Z): fleet_reconnected_within_s | ≤ 60 | 11 (pass) | measured | [`result.json`](docs/drill-output/reconnect-storm-20261108T120311Z/result.json) |  |
-| Drill reconnect-storm (20261108T120311Z): gateways_ready_after_storm | = 400 | 400 (pass) | measured | [`result.json`](docs/drill-output/reconnect-storm-20261108T120311Z/result.json) |  |
-| Drill replica-lag-20261108T181636Z (20261108T181636Z): result.json | n/a | no result.json | measured | [`timeline.jsonl`](docs/drill-output/replica-lag-20261108T181636Z/timeline.jsonl) |  |
-| Drill replica-lag (20261108T182727Z): replica_in_sync_before | ≤ 2 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): driver_api_read_p99_s_during | ≤ 0.3 | 0.15 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): ryw_fell_back_to_primary | ≥ 1 | 306.38 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): replica_lag_alert_fired | ≥ 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): lag_drained_within_s | ≤ 120 | 9 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): probe_ryw_reads_made | ≥ 3 | 99 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): ryw_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): stale_probes_resolved | ≥ 1 | 27 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): stale_unresolved | = 0 | 6 (**FAIL**) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): stale_excess_over_lag_s | ≤ 0 | -13.42 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T182727Z): client_read_errors | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T182727Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): replica_in_sync_before | ≤ 2 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): driver_api_read_p99_s_during | ≤ 0.3 | 0.17 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): ryw_fell_back_to_primary | ≥ 1 | 338.04 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): replica_lag_alert_fired | ≥ 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): lag_drained_within_s | ≤ 120 | 9 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): probe_ryw_reads_made | ≥ 3 | 624 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): ryw_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): stale_probes_resolved | ≥ 1 | 208 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): stale_unresolved | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): stale_excess_over_lag_s | ≤ 0 | -12.72 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill replica-lag (20261108T183638Z): client_read_errors | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
-| Drill reservation-invariant-none (20261108T205643Z): reserve_ok_before_fault | ≥ 1 | 60 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-20261108T205643Z/result.json) |  |
-| Drill reservation-invariant-none (20261108T205643Z): recovered_within_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-20261108T205643Z/result.json) |  |
-| Drill reservation-invariant-none (20261108T205643Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-20261108T205643Z/result.json) |  |
-| Drill reservation-invariant-none-mutated (20261108T205511Z): reserve_ok_before_fault | ≥ 1 | 126 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
-| Drill reservation-invariant-none-mutated (20261108T205511Z): recovered_within_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
-| Drill reservation-invariant-none-mutated (20261108T205511Z): constraints_dropped | ≥ 1 | 5 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
-| Drill reservation-invariant-none-mutated (20261108T205511Z): checker_detects_mutation | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
-| Drill reservation-invariant-none-mutated (20261108T205511Z): constraints_restored | = 5 | 5 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
-| Drill reservation-invariant-pause (20261108T205154Z): reserve_ok_before_fault | ≥ 1 | 60 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-pause-20261108T205154Z/result.json) |  |
-| Drill reservation-invariant-pause (20261108T205154Z): recovered_within_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-pause-20261108T205154Z/result.json) |  |
-| Drill reservation-invariant-pause (20261108T205154Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-pause-20261108T205154Z/result.json) |  |
-| Drill reservation-invariant-restart (20261108T205335Z): reserve_ok_before_fault | ≥ 1 | 57 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json) |  |
-| Drill reservation-invariant-restart (20261108T205335Z): recovered_within_s | ≤ 60 | 11 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json) |  |
-| Drill reservation-invariant-restart (20261108T205335Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json) |  |
-| Drill slow-postgres (20261108T142904Z): ocpp_callresult_p99_s_during | ≤ 0.5 | 2.24 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
-| Drill slow-postgres (20261108T142904Z): lag_drained_within_s | ≤ 300 | 7 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
-| Drill slow-postgres (20261108T142904Z): ingest_lag_p99_s_after_recovery | ≤ 5 | 118.52 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
-| Drill slow-postgres (20261108T142904Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
-| Drill slow-postgres (20261108T150304Z): ocpp_callresult_p99_s_during | ≤ 0.5 | 10 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T150304Z/result.json) |  |
-| Drill slow-postgres (20261108T150304Z): lag_drained_within_s | ≤ 300 | 0 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T150304Z/result.json) |  |
-| Drill slow-postgres (20261108T150304Z): ingest_lag_p99_s_90s_after_recovery | ≤ 5 | 1.37 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T150304Z/result.json) |  |
-| Drill slow-postgres (20261108T150304Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T150304Z/result.json) |  |
-| Drill slow-postgres (20261108T160959Z): ocpp_callresult_p99_s_during | ≤ 0.5 | 2.48 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T160959Z/result.json) |  |
-| Drill slow-postgres (20261108T160959Z): lag_drained_within_s | ≤ 300 | 9 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T160959Z/result.json) |  |
-| Drill slow-postgres (20261108T160959Z): ingest_lag_p99_s_90s_after_recovery | ≤ 5 | 9.9 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T160959Z/result.json) |  |
-| Drill slow-postgres (20261108T160959Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T160959Z/result.json) |  |
-| Drill slow-postgres (20261108T162708Z): ocpp_callresult_p99_s_during | ≤ 0.5 | 0.08 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T162708Z/result.json) |  |
-| Drill slow-postgres (20261108T162708Z): lag_drained_within_s | ≤ 300 | 0 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T162708Z/result.json) |  |
-| Drill slow-postgres (20261108T162708Z): ingest_lag_p99_s_90s_after_recovery | ≤ 5 | 0.49 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T162708Z/result.json) |  |
-| Drill slow-postgres (20261108T162708Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T162708Z/result.json) |  |
-| Drill smart-charging-down (20261108T114310Z): fallback_rounds_seen | ≥ 1 | 188.87 (pass) | measured (PromQL increase, extrapolated) | [`result.json`](docs/drill-output/smart-charging-down-20261108T114310Z/result.json) |  |
-| Drill smart-charging-down (20261108T114310Z): sessions_still_charging | ≥ 1 | 16 (pass) | measured | [`result.json`](docs/drill-output/smart-charging-down-20261108T114310Z/result.json) |  |
-| Drill smart-charging-down (20261108T114310Z): optimal_rounds_resumed | ≥ 1 | 80.73 (pass) | measured (PromQL increase, extrapolated) | [`result.json`](docs/drill-output/smart-charging-down-20261108T114310Z/result.json) |  |
-| Drill smart-charging-down (20261108T114310Z): max_site_utilisation_over_drill | ≤ 1 | 0.68 (pass) | measured | [`result.json`](docs/drill-output/smart-charging-down-20261108T114310Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): stations_taken_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): connected_dropped_during_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): replay_drained_within_s | ≤ 600 | 31 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): queue_dropped_total | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): probe_readings_generated | ≥ 1 | 1,272 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T141434Z): replayed_rows_flagged | ≥ 1 | 960 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): stations_taken_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): connected_dropped_during_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): replay_drained_within_s | ≤ 600 | no measurement (**FAIL**) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): queue_dropped_total | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): probe_readings_generated | ≥ 1 | 164,203 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): probe_readings_missing | = 0 | 82,914 (**FAIL**) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T151006Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): stations_taken_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): connected_dropped_during_offline | ≥ 20 | 20 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): replay_drained_within_s | ≤ 600 | 40 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): queue_dropped_total | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): probe_readings_generated | ≥ 1 | 123,652 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
-| Drill station-offline-replay (20261108T190213Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json) |  |
+| station-gateway | WebSocket connections | ≥ 10,000 | 10,000 | ✅ met | [`gateway-10k-connections.json`](docs/load-output/gateway-10k-connections.json) |
+| station-gateway | Messages per second | ≥ 2,000 /s | 1,139.03 /s | ❌ missed | [`k6-gateway-ws-2000st-1hz.json`](docs/load-output/k6-gateway-ws-2000st-1hz.json) |
+| station-gateway | CALLRESULT p99 | ≤ 500 ms | 3,228 ms | ❌ missed | [`k6-gateway-ws-2000st-1hz.json`](docs/load-output/k6-gateway-ws-2000st-1hz.json) |
+| telemetry-ingest | Sustained rows per second (2,500 offered) | ≥ 2,500 /s | 2,471.23 /s | ❌ missed | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |
+| telemetry-ingest | Durable lag p99 (at the target rate) | ≤ 5,000 ms | 942.95 ms | ✅ met | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |
+| telemetry-ingest | Telemetry visible in driver-api p99 | ≤ 10,000 ms | no measurement | not tested | no saved run |
+| telemetry-ingest | Loss ratio at the target rate | ≤ 0.0001 | 0 | ✅ met | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |
+| sessions | Commands per second (StartTransaction + StopTransaction) | ≥ 200 /s | 199.99 /s | ❌ missed | [`k6-sessions-ocpp-rate200.json`](docs/load-output/k6-sessions-ocpp-rate200.json) |
+| smart-charging | Allocations per second (k6, service) | ≥ 1,000 /s | 999.97 /s | ❌ missed | [`k6-smart-charging.json`](docs/load-output/k6-smart-charging.json) |
+| smart-charging | Allocation p99 (open loop at the target rate) | ≤ 20 ms | 19.45 ms | ✅ met | [`smart-charging-allocbench.json`](docs/load-output/smart-charging-allocbench.json) |
+| tariff | Quotes per second (k6, service) | ≥ 2,000 /s | 1,999.97 /s | ❌ missed | [`k6-tariff.json`](docs/load-output/k6-tariff.json) |
+| tariff | Quote p99 (open loop at the target rate) | ≤ 20 ms | 13.9 ms | ✅ met | [`tariff-quotebench-openloop.json`](docs/load-output/tariff-quotebench-openloop.json) |
+| driver-api | Read requests per second (GET /v1/sites) | ≥ 1,000 /s | 955.59 /s | ❌ missed | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json) |
+| driver-api | Read p99 | ≤ 300 ms | 255.2 ms | ✅ met | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json) |
+| driver-api | Write p99 | ≤ 800 ms | no measurement | not tested | no saved run |
+<!-- glance:end -->
 
-Notes on individual rows:
+How to read it: every verdict compares the measured value with the target, with no tolerance. The **station gateway misses its message-rate and CALLRESULT p99 targets** in the 2,000-station run, which is the only run that offers enough load to test the rate (see [Known limits](#known-limits-and-production-gaps)); the 1,000-station run cannot test a 2,000 msg/s target and is labelled "not tested", but it also missed the CALLRESULT p99 target (1,446 ms against 500 ms, `ocpp_callresult_ms` p(99) in `k6-gateway-ws-1000st-1hz.json`). The gateway does hold 10,000 WebSocket connections. The sessions rate (199.99 against 200) and the driver-api read rate (955.59 against 1,000) are below their targets and are drawn as misses; the notes under the table in [`docs/metrics.md`](docs/metrics.md) explain each (a 60.003 s run for sessions, and setup requests plus dropped iterations for driver-api). The telemetry-ingest sustained rate at the target offered rate (2,471.23 against 2,500) is also a miss. The smart-charging (999.97 against 1,000) and tariff (1,999.97 against 2,000) k6 rates are drawn as misses too; they are duration artefacts, explained in the notes under the table in [`docs/metrics.md`](docs/metrics.md). The closed-loop saturation figures in the metrics table (for example 10,507.2 allocations/s and 14,399.8 quotes/s) are best-case benchmarks, not the charted verdicts.
 
-- **Sessions: commands/s at 200 offered (k6):** 12,000 requests in 60.003 s with 0 dropped iterations: every offered request was sent. The rate is below 200 only because k6 divides by the test run duration (60.003 s); it is a rounding artefact, not a throughput shortfall. Derived: http_reqs.count / testRunDurationMs × 1000.
-- **Smart charging: k6 against the service:** 60,000 requests in 60.0018 s. The target is 1,000 /s and the reported rate is 999.97 /s only because the run lasted slightly longer than 60 s, so the miss is a duration artefact and not a throughput shortfall. Derived: http_reqs.count / testRunDurationMs × 1000 (60,000 / 60.0018 s = 999.97).
-- **Tariff: k6 against the service:** 120,003 requests in 60.0024 s. The target is 2,000 /s and the reported rate is 1,999.97 /s only because the run lasted slightly longer than 60 s, so the miss is a duration artefact and not a throughput shortfall. Derived: http_reqs.count / testRunDurationMs × 1000 (120,003 / 60.0024 s = 1,999.97).
-- **Driver API: read requests/s (GET /v1/sites, k6):** The reported rate is http_reqs.count / test run duration, and http_reqs also counts 40 setup requests (register and login). The scenario itself completed 59,669 iterations in 60 s, about 994.48 per second (derived: iterations / ((iterations + dropped_iterations) / 1,000 per second)), and 331 iterations were dropped. The k6 script's own threshold on dropped_iterations (rate<10, held) is a 1% tolerance set in the script; ADR 0000 does not allow it, so the row counts as missed.
-<!-- metrics:end -->
+### Charts
 
-## Charts
-
-Every chart is an SVG generated from the raw files by [`scripts/charts/`](scripts/charts/README.md) (`node scripts/charts/build.mjs`), works in GitHub light and dark themes, and carries a footer naming its source files and the measurement setup. One timeline chart is generated per directory in `docs/drill-output/`.
+The chart shows each measured value divided by its target. Every chart is an SVG generated from the raw files by [`scripts/charts/`](scripts/charts/README.md) (`node scripts/charts/build.mjs`), works in GitHub light and dark themes, and carries a footer naming its source files and the measurement setup. The headline charts are below; the drill timelines are in [`docs/drills.md`](docs/drills.md) and the telemetry storage chart is in [`docs/metrics.md`](docs/metrics.md).
 
 <!-- charts:start (generated by scripts/charts/build.mjs) -->
 #### Target versus measured, per service
@@ -378,222 +182,75 @@ Sustained rate and durable lag against the offered rate. Hollow markers did not 
 
 ![telemetry-ingest: COPY versus row-by-row](docs/img/telemetry-ingest.svg)
 
-#### telemetry storage
-
-Compression, chunk sizes and query latency on a 7-day backfill; the full-fleet sizes are derived and marked as such.
-
-![telemetry storage](docs/img/telemetry-storage.svg)
-
 #### smart-charging: allocation under the site cap
 
 Drawn power against the sum of the site caps through the allocator outage drill, before, during and after.
 
 ![smart-charging: allocation under the site cap](docs/img/smart-charging-cap.svg)
-
-#### Drill timeline: consumer-rebalance-20261108T214311Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: consumer-rebalance-20261108T214311Z](docs/img/drill-consumer-rebalance-20261108T214311Z.svg)
-
-#### Drill timeline: consumer-rebalance-20261108T214804Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: consumer-rebalance-20261108T214804Z](docs/img/drill-consumer-rebalance-20261108T214804Z.svg)
-
-#### Drill timeline: gateway-instance-loss-20261108T115832Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: gateway-instance-loss-20261108T115832Z](docs/img/drill-gateway-instance-loss-20261108T115832Z.svg)
-
-#### Drill timeline: gateway-instance-loss-20261108T122353Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: gateway-instance-loss-20261108T122353Z](docs/img/drill-gateway-instance-loss-20261108T122353Z.svg)
-
-#### Drill timeline: kafka-broker-loss-1-20261108T122708Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: kafka-broker-loss-1-20261108T122708Z](docs/img/drill-kafka-broker-loss-1-20261108T122708Z.svg)
-
-#### Drill timeline: kafka-broker-loss-1-20261108T140530Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: kafka-broker-loss-1-20261108T140530Z](docs/img/drill-kafka-broker-loss-1-20261108T140530Z.svg)
-
-#### Drill timeline: kafka-broker-loss-2-20261108T123144Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: kafka-broker-loss-2-20261108T123144Z](docs/img/drill-kafka-broker-loss-2-20261108T123144Z.svg)
-
-#### Drill timeline: kafka-broker-loss-2-20261108T140952Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: kafka-broker-loss-2-20261108T140952Z](docs/img/drill-kafka-broker-loss-2-20261108T140952Z.svg)
-
-#### Drill timeline: kraft-quorum-loss-20261108T184440Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: kraft-quorum-loss-20261108T184440Z](docs/img/drill-kraft-quorum-loss-20261108T184440Z.svg)
-
-#### Drill timeline: kraft-quorum-loss-20261108T185039Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: kraft-quorum-loss-20261108T185039Z](docs/img/drill-kraft-quorum-loss-20261108T185039Z.svg)
-
-#### Drill timeline: postgres-failover-auto-async-stall0-20261108T203614Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: postgres-failover-auto-async-stall0-20261108T203614Z](docs/img/drill-postgres-failover-auto-async-stall0-20261108T203614Z.svg)
-
-#### Drill timeline: postgres-failover-auto-async-stall3-20261108T204000Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: postgres-failover-auto-async-stall3-20261108T204000Z](docs/img/drill-postgres-failover-auto-async-stall3-20261108T204000Z.svg)
-
-#### Drill timeline: postgres-failover-auto-async-stall3-20261108T220826Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: postgres-failover-auto-async-stall3-20261108T220826Z](docs/img/drill-postgres-failover-auto-async-stall3-20261108T220826Z.svg)
-
-#### Drill timeline: postgres-failover-auto-sync-stall0-20261108T204337Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: postgres-failover-auto-sync-stall0-20261108T204337Z](docs/img/drill-postgres-failover-auto-sync-stall0-20261108T204337Z.svg)
-
-#### Drill timeline: postgres-failover-auto-sync-stall3-20261108T204731Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: postgres-failover-auto-sync-stall3-20261108T204731Z](docs/img/drill-postgres-failover-auto-sync-stall3-20261108T204731Z.svg)
-
-#### Drill timeline: postgres-failover-auto-sync-stall3-20261108T221218Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: postgres-failover-auto-sync-stall3-20261108T221218Z](docs/img/drill-postgres-failover-auto-sync-stall3-20261108T221218Z.svg)
-
-#### Drill timeline: postgres-failover-manual-async-stall0-20261108T215357Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: postgres-failover-manual-async-stall0-20261108T215357Z](docs/img/drill-postgres-failover-manual-async-stall0-20261108T215357Z.svg)
-
-#### Drill timeline: reconnect-storm-20261108T120311Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: reconnect-storm-20261108T120311Z](docs/img/drill-reconnect-storm-20261108T120311Z.svg)
-
-#### Drill timeline: replica-lag-20261108T181636Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: no result.json.
-
-![Drill timeline: replica-lag-20261108T181636Z](docs/img/drill-replica-lag-20261108T181636Z.svg)
-
-#### Drill timeline: replica-lag-20261108T182727Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: replica-lag-20261108T182727Z](docs/img/drill-replica-lag-20261108T182727Z.svg)
-
-#### Drill timeline: replica-lag-20261108T183638Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: replica-lag-20261108T183638Z](docs/img/drill-replica-lag-20261108T183638Z.svg)
-
-#### Drill timeline: reservation-invariant-none-20261108T205643Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: reservation-invariant-none-20261108T205643Z](docs/img/drill-reservation-invariant-none-20261108T205643Z.svg)
-
-#### Drill timeline: reservation-invariant-none-mutated-20261108T205511Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: reservation-invariant-none-mutated-20261108T205511Z](docs/img/drill-reservation-invariant-none-mutated-20261108T205511Z.svg)
-
-#### Drill timeline: reservation-invariant-pause-20261108T205154Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: reservation-invariant-pause-20261108T205154Z](docs/img/drill-reservation-invariant-pause-20261108T205154Z.svg)
-
-#### Drill timeline: reservation-invariant-restart-20261108T205335Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: reservation-invariant-restart-20261108T205335Z](docs/img/drill-reservation-invariant-restart-20261108T205335Z.svg)
-
-#### Drill timeline: slow-postgres-20261108T142904Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: slow-postgres-20261108T142904Z](docs/img/drill-slow-postgres-20261108T142904Z.svg)
-
-#### Drill timeline: slow-postgres-20261108T150304Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: slow-postgres-20261108T150304Z](docs/img/drill-slow-postgres-20261108T150304Z.svg)
-
-#### Drill timeline: slow-postgres-20261108T160959Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: slow-postgres-20261108T160959Z](docs/img/drill-slow-postgres-20261108T160959Z.svg)
-
-#### Drill timeline: slow-postgres-20261108T162708Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: slow-postgres-20261108T162708Z](docs/img/drill-slow-postgres-20261108T162708Z.svg)
-
-#### Drill timeline: smart-charging-down-20261108T114310Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: smart-charging-down-20261108T114310Z](docs/img/drill-smart-charging-down-20261108T114310Z.svg)
-
-#### Drill timeline: station-offline-replay-20261108T141434Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: station-offline-replay-20261108T141434Z](docs/img/drill-station-offline-replay-20261108T141434Z.svg)
-
-#### Drill timeline: station-offline-replay-20261108T151006Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
-
-![Drill timeline: station-offline-replay-20261108T151006Z](docs/img/drill-station-offline-replay-20261108T151006Z.svg)
-
-#### Drill timeline: station-offline-replay-20261108T190213Z
-
-Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
-
-![Drill timeline: station-offline-replay-20261108T190213Z](docs/img/drill-station-offline-replay-20261108T190213Z.svg)
 <!-- charts:end -->
+
+## Drills
+
+The failure drills in [`drills/`](drills/) break one component while the simulator drives the fleet. Each run writes a timeline, an event log and a `result.json` with pass or fail checks to `docs/drill-output/`. Failed and inconclusive runs stay as evidence. [`docs/drills.md`](docs/drills.md) lists every run with its timeline chart; the findings the drills produced are in [What the drills and reviews caught](#what-the-drills-and-reviews-caught).
+
+<!-- drills:start -->
+| Drill | What it breaks | Runs passed | Latest run | Timeline |
+|---|---|:---:|---|---|
+| `consumer-rebalance` | consumer-group rebalance under load, and idempotency on redelivery | 2 of 2 | ✅ passed | [20261108T214804Z](docs/drills.md#consumer-rebalance-20261108t214804z) |
+| `gateway-instance-loss` | kill one station-gateway instance (SIGKILL, no graceful close) | 1 of 2 | ✅ passed | [20261108T122353Z](docs/drills.md#gateway-instance-loss-20261108t122353z) |
+| `kafka-broker-loss-1` | one broker down | 1 of 2 | ✅ passed | [20261108T140530Z](docs/drills.md#kafka-broker-loss-1-20261108t140530z) |
+| `kafka-broker-loss-2` | two brokers down | 1 of 2 | ✅ passed | [20261108T140952Z](docs/drills.md#kafka-broker-loss-2-20261108t140952z) |
+| `kraft-quorum-loss` | lose the KRaft controller quorum (2 of 3 combined broker/controller nodes) under simulator load | 1 of 2 | ✅ passed | [20261108T185039Z](docs/drills.md#kraft-quorum-loss-20261108t185039z) |
+| `postgres-failover-auto-async-stall0` | no drill script | 1 of 1 | ✅ passed | [20261108T203614Z](docs/drills.md#postgres-failover-auto-async-stall0-20261108t203614z) |
+| `postgres-failover-auto-async-stall3` | no drill script | 0 of 2 | ❌ failed | [20261108T220826Z](docs/drills.md#postgres-failover-auto-async-stall3-20261108t220826z) |
+| `postgres-failover-auto-sync-stall0` | no drill script | 1 of 1 | ✅ passed | [20261108T204337Z](docs/drills.md#postgres-failover-auto-sync-stall0-20261108t204337z) |
+| `postgres-failover-auto-sync-stall3` | no drill script | 2 of 2 | ✅ passed | [20261108T221218Z](docs/drills.md#postgres-failover-auto-sync-stall3-20261108t221218z) |
+| `postgres-failover-manual-async-stall0` | no drill script | 1 of 1 | ✅ passed | [20261108T215357Z](docs/drills.md#postgres-failover-manual-async-stall0-20261108t215357z) |
+| `reconnect-storm` | whole fleet disconnects at once and reconnects per the ADR 0003 policy (first attempt U(0,10 s), then full-jitter backoff) | 1 of 1 | ✅ passed | [20261108T120311Z](docs/drills.md#reconnect-storm-20261108t120311z) |
+| `replica-lag` | the sessions read replica stops replaying WAL (pg_wal_replay_pause) | 1 of 3 | ✅ passed | [20261108T183638Z](docs/drills.md#replica-lag-20261108t183638z) |
+| `reservation-invariant-none` | no drill script | 1 of 1 | ✅ passed | [20261108T205643Z](docs/drills.md#reservation-invariant-none-20261108t205643z) |
+| `reservation-invariant-none-mutated` | no drill script | 1 of 1 | ✅ passed | [20261108T205511Z](docs/drills.md#reservation-invariant-none-mutated-20261108t205511z) |
+| `reservation-invariant-pause` | no drill script | 1 of 1 | ✅ passed | [20261108T205154Z](docs/drills.md#reservation-invariant-pause-20261108t205154z) |
+| `reservation-invariant-restart` | no drill script | 1 of 1 | ✅ passed | [20261108T205335Z](docs/drills.md#reservation-invariant-restart-20261108t205335z) |
+| `slow-postgres` | the telemetry Postgres becomes slow (CPU throttled to 0.05 cores) | 1 of 4 | ✅ passed | [20261108T162708Z](docs/drills.md#slow-postgres-20261108t162708z) |
+| `smart-charging-down` | the Go allocator is down | 1 of 1 | ✅ passed | [20261108T114310Z](docs/drills.md#smart-charging-down-20261108t114310z) |
+| `station-offline-replay` | stations lose their network for up to 24 h of simulated time while charging | 2 of 3 | ✅ passed | [20261108T190213Z](docs/drills.md#station-offline-replay-20261108t190213z) |
+<!-- drills:end -->
 
 ## What the drills and reviews caught
 
 Every item below was found during this build by a code review, a load test or a failure drill. Labels: **measured** means the number comes from a raw file in this repository (named) or a test assertion; **derived** means calculated from stated values with the formula given; **observed, not saved** means it was read from live `/metrics`, `free` or k6 output during a run and no file records it, so it cannot be reproduced from this repository; **review scenario** means a worked example from a review that was not measured on the running system.
 
-### 1. Allocation command storm towards offline stations
+<!-- findings:start -->
+| # | Finding | Found by | Item |
+|---:|---|---|---|
+| 1 | Allocation command storm towards offline stations | k6 | [details](#finding-1) |
+| 2 | Site cap exceeded during reallocation | review | [details](#finding-2) |
+| 3 | Gateway safe share could exceed the cap, and one profile id was shared by all connectors | review | [details](#finding-3) |
+| 4 | Invoices lost after a short Postgres outage | review | [details](#finding-4) |
+| 5 | The outbox broke per-key event order with two replicas | review | [details](#finding-5) |
+| 6 | `NOTIFY` serialised every commit | k6 | [details](#finding-6) |
+| 7 | Concurrent `StartTransaction` on one connector returned 500 | k6 | [details](#finding-7) |
+| 8 | `/v1/sites` returned 429,276 bytes per call | k6 | [details](#finding-8) |
+| 9 | Memory pressure in the lab VM | k6 | [details](#finding-9) |
+| 10 | Fleet convention drift between generators | review | [details](#finding-10) |
+| 11 | Billing under-collected totals above the hold and could strand a charge | review | [details](#finding-11) |
+| 12 | One bad telemetry row stopped ingest globally | review | [details](#finding-12) |
+| 13 | A builder agent reported "committed" while its review fixes were still uncommitted | manual check | [details](#finding-13) |
+| 14 | A late duplicate connect attempt left one station stuck after a gateway loss | drill | [details](#finding-14) |
+| 15 | The gateway crashed with two Kafka brokers down | drill | [details](#finding-15) |
+| 16 | OCPP deduplication returned another message's stored response after a simulator restart | drill | [details](#finding-16) |
+| 17 | The first station-offline-replay run was invalid and still passed | drill | [details](#finding-17) |
+| 18 | The drill harness wrote curl's "000" as a number and produced invalid JSON | drill | [details](#finding-18) |
+| 19 | Allocation feedback loop: one SetChargingProfile result caused a round that resent every profile | drill | [details](#finding-19) |
+| 20 | HAProxy kept stale gateway IPs | drill | [details](#finding-20) |
+| 21 | The slow-Postgres drill never lifted its CPU cap | drill | [details](#finding-21) |
+| 22 | Unbounded Jaeger memory | manual check | [details](#finding-22) |
+| 23 | The first slow-Postgres failures were a Kafka leader move and an overloaded VM, not the slow database | drill | [details](#finding-23) |
+<!-- findings:end -->
+
+<details id="finding-1">
+<summary>1. Allocation command storm towards offline stations</summary>
 
 - **Found by:** a k6 sessions run with the simulator stopped.
 - **Symptom (observed, not saved as a file):** 22,190 `SetChargingProfile` commands published and 3,144 trigger rounds within minutes while the stations were offline; Kafka sat at about 128% CPU per broker.
@@ -601,7 +258,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** only Accepted results re-trigger. Other outcomes wait for the periodic 60 s round.
 - **Regression test:** [`services/sessions/test/int/two-phase.test.ts`](services/sessions/test/int/two-phase.test.ts) (the assertion carries the comment "A non-Accepted result must not re-trigger the site"; that comment is not a test name).
 
-### 2. Site cap exceeded during reallocation
+</details>
+
+<details id="finding-2">
+<summary>2. Site cap exceeded during reallocation</summary>
 
 - **Found by:** the Opus review of `sessions`.
 - **Symptom (review scenario, not measured):** cap 30 kW, station A at 22 kW. A round gives A and B 15 kW each, A's decrease is lost because the station is offline, and B's increase lands: 37 kW in force.
@@ -609,7 +269,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** two-phase apply. The in-force limit is tracked, increases are sent only when the headroom covers the worst case, and an unconfirmed profile is never forgotten ([ADR 0006](docs/adr/0006-smart-charging-allocation.md), "Applying an allocation").
 - **Regression test:** [`services/sessions/test/int/two-phase.test.ts`](services/sessions/test/int/two-phase.test.ts).
 
-### 3. Gateway safe share could exceed the cap, and one profile id was shared by all connectors
+</details>
+
+<details id="finding-3">
+<summary>3. Gateway safe share could exceed the cap, and one profile id was shared by all connectors</summary>
 
 - **Found by:** the Opus review of the gateway.
 - **Symptom (review scenario, not measured):** cap 30 kW and 3 connectors with a safe share of 10 kW. A is at 20 kW, B is raised to 10 kW, C is at its start power of 4.14 kW: 34.1 kW. Separately, connector 2's profile replaced connector 1's.
@@ -617,7 +280,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** one profile id per connector, `txProfileId(c) = 100 + c`, and the safe share is applied only when the whole site is stale (Redis key `alloc:site:{id}`, written by `sessions` before each round commits).
 - **Regression tests:** [`services/station-gateway/test/int/gateway.int.test.ts`](services/station-gateway/test/int/gateway.int.test.ts), [`simulator/test/unit/profiles.test.ts`](simulator/test/unit/profiles.test.ts).
 
-### 4. Invoices lost after a short Postgres outage
+</details>
+
+<details id="finding-4">
+<summary>4. Invoices lost after a short Postgres outage</summary>
 
 - **Found by:** the Opus review of `billing`.
 - **Symptom (review scenario; derived from the consumer defaults: 5 attempts with full-jitter backoff capped at 200, 400, 800 and 1,600 ms, so at most about 3 s in total and about 1.5 s on average):** a Postgres blip of a few seconds dead-lettered `session.completed`, and no invoice was ever issued.
@@ -625,7 +291,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** the platform consumer retries handler errors indefinitely and dead-letters only undecodable records.
 - **Regression test:** [`services/billing/test/int/outage.test.ts`](services/billing/test/int/outage.test.ts) (about 10 s with connections refused; the invoice is still issued and the DLQ stays empty).
 
-### 5. The outbox broke per-key event order with two replicas
+</details>
+
+<details id="finding-5">
+<summary>5. The outbox broke per-key event order with two replicas</summary>
 
 - **Found by:** the ponytail audit, confirmed by the Opus review.
 - **Symptom (review scenario, not measured):** with two replicas, events for one key could be published out of order.
@@ -633,7 +302,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** a single active relay per database (advisory lock) that publishes rows whose transaction finished before every running one, ordered by `(tx, id)` ([ADR 0002](docs/adr/0002-contracts-events-and-delivery-semantics.md) erratum).
 - **Regression test:** [`packages/platform/test/int/outbox.test.ts`](packages/platform/test/int/outbox.test.ts) ("does not publish a later-committed row before an earlier-started one", "a second relay is a no-op").
 
-### 6. `NOTIFY` serialised every commit
+</details>
+
+<details id="finding-6">
+<summary>6. `NOTIFY` serialised every commit</summary>
 
 - **Found by:** a k6 sessions run, then traces and `pg_stat_activity`.
 - **Symptom (observed, not saved as a file):** `COMMIT` waiting on `Lock:object`, connection pool exhaustion ("timeout exceeded when trying to connect"), and the OCPP hot path at multi-second p99.
@@ -641,55 +313,79 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** no trigger; the relay polls every 50 ms. Migration `0004_outbox_drop_notify.sql` in [`sessions`](services/sessions/migrations/0004_outbox_drop_notify.sql) and [`billing`](services/billing/migrations/0004_outbox_drop_notify.sql).
 - **Regression test:** [`packages/platform/test/int/outbox.test.ts`](packages/platform/test/int/outbox.test.ts) (asserts that there is no trigger and that publication happens within 1 s).
 
-### 7. Concurrent `StartTransaction` on one connector returned 500
+</details>
+
+<details id="finding-7">
+<summary>7. Concurrent `StartTransaction` on one connector returned 500</summary>
 
 - **Found by:** a k6 sessions run. The error (unique violation `active_sessions_connector_pk_key`) was observed in the k6 output and not saved as a file.
 - **Cause:** two transactions raced to insert the active session of one connector.
 - **Fix:** `SELECT ... FOR NO KEY UPDATE OF c` on the connector row.
 - **Regression test:** [`services/sessions/test/int/ocpp.test.ts`](services/sessions/test/int/ocpp.test.ts) ("concurrent StartTransactions on one connector").
 
-### 8. `/v1/sites` returned 429,276 bytes per call
+</details>
+
+<details id="finding-8">
+<summary>8. `/v1/sites` returned 429,276 bytes per call</summary>
 
 - **Found by:** the k6 driver-api run.
 - **Symptom (observed, not saved as a file):** 429,276 bytes per call for 146 sites and 1,460 stations, which capped driver-api reads at about 527 RPS.
 - **Fix:** the nearest 20 sites by default (limit up to 100). Afterwards the saved run ([`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json), measured) reached 955.59 req/s (`http_reqs` rate) at p99 255.2 ms against 1,000 req/s offered. The rate is a **miss** against the 1,000 req/s target, and the p99 passes (target 300 ms). `http_reqs` includes 40 setup requests, and the scenario iterations ran at about 994.5 per second [derived: 59,669 iterations / 60 s], with 331 of 60,000 iterations dropped. The 1% dropped-iteration tolerance belongs to the k6 script; ADR 0000 does not define it.
 - **Regression test:** none; the load script [`load/k6/driver-api-reads.js`](load/k6/driver-api-reads.js) is the guard.
 
-### 9. Memory pressure in the lab VM
+</details>
+
+<details id="finding-9">
+<summary>9. Memory pressure in the lab VM</summary>
 
 - **Found by:** k6 results that degraded over time.
 - **Symptom (observed with `free` in a container, not saved as a file):** swap at 1,023 MB with 1.3 MB free, the Jaeger in-memory store at 1.15 GB with 100% sampling, and Kafka GC at about 150% CPU per broker.
 - **Fix:** 10% parent-based trace sampling, documented in [`docker-compose.yml`](docker-compose.yml). That was not enough; see item 22 for the bounded Jaeger store.
 - **Regression test:** none; it is a configuration change.
 
-### 10. Fleet convention drift between generators
+</details>
+
+<details id="finding-10">
+<summary>10. Fleet convention drift between generators</summary>
 
 - **Found by:** the Opus review.
 - **Symptom (review scenario, not measured):** `sessions`, the simulator and the backfill each had their own DC power rule (for example station g=24 was 50 kW in one and 150 kW in another).
 - **Fix:** one convention in [`packages/contracts/src/fleet.ts`](packages/contracts/src/fleet.ts) with a generated fixture.
 - **Regression tests:** `TestFleetFixture` in [`scripts/backfill-telemetry/internal/gen/`](scripts/backfill-telemetry/internal/gen/) and the simulator fleet test [`simulator/test/unit/fleet-demand.test.ts`](simulator/test/unit/fleet-demand.test.ts).
 
-### 11. Billing under-collected totals above the hold and could strand a charge
+</details>
+
+<details id="finding-11">
+<summary>11. Billing under-collected totals above the hold and could strand a charge</summary>
 
 - **Found by:** the Opus review.
 - **Symptom (review scenario, not measured):** invoice totals above the authorized hold were under-collected, and a charge could be stranded when the card changed in the middle of a retry.
 - **Fix:** the remainder is captured with the idempotency key `capture:{invoiceId}:rest`, and the exact capture request is persisted and replayed.
 - **Regression test:** [`services/billing/test/int/psp-edge.test.ts`](services/billing/test/int/psp-edge.test.ts).
 
-### 12. One bad telemetry row stopped ingest globally
+</details>
+
+<details id="finding-12">
+<summary>12. One bad telemetry row stopped ingest globally</summary>
 
 - **Found by:** the Opus review.
 - **Symptom (review scenario, not measured):** one bad row stopped ingest for everything.
 - **Fix:** bisect the failed batch and dead-letter only the rejected record.
 - **Regression test:** `TestPoisonRecordIsBisectedAndDeadLettered` in [`services/telemetry-ingest/internal/ingest/pipeline_integration_test.go`](services/telemetry-ingest/internal/ingest/pipeline_integration_test.go).
 
-### 13. A builder agent reported "committed" while its review fixes were still uncommitted
+</details>
+
+<details id="finding-13">
+<summary>13. A builder agent reported "committed" while its review fixes were still uncommitted</summary>
 
 - **Found by:** checking the running compose stack (the rate limits were missing from the container environment).
 - **Process fix:** every worktree is verified clean before it is merged.
 - **Regression test:** none; it is a process rule.
 
-### 14. A late duplicate connect attempt left one station stuck after a gateway loss
+</details>
+
+<details id="finding-14">
+<summary>14. A late duplicate connect attempt left one station stuck after a gateway loss</summary>
 
 - **Found by:** the gateway-instance-loss drill, first run ([`gateway-instance-loss-20261108T115832Z`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json), **FAILED**, kept as evidence).
 - **Symptom (measured, `result.json`):** 199 of 200 stations reconnected (`routes_present_after_loss` 199, `fleet_connected_after_recovery` 199, and no measurement for `stations_reconnected_within_s`).
@@ -697,7 +393,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** the simulator closes superseded sockets when they open and reconnects after a 10 to 30 s pause on close code 4000.
 - **Tests:** the simulator unit tests, and the drill itself. The rerun ([`gateway-instance-loss-20261108T122353Z`](docs/drill-output/gateway-instance-loss-20261108T122353Z/result.json), passed, measured) reconnected in 31 s with 200 of 200 routes.
 
-### 15. The gateway crashed with two Kafka brokers down
+</details>
+
+<details id="finding-15">
+<summary>15. The gateway crashed with two Kafka brokers down</summary>
 
 - **Found by:** the kafka-broker-loss drill with two brokers, first run ([`kafka-broker-loss-2-20261108T123144Z`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/result.json), **FAILED**, kept as evidence with a [`NOTE.md`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/NOTE.md)).
 - **Symptom (measured, `result.json`):** `gateway_ready_during_outage` got no HTTP answer (recorded as 0, expected 200), and 126 of 280 probe readings were missing. The produce error rate and the buffer depth checks passed (34.79 errors/s at most, buffer depth 549).
@@ -705,7 +404,10 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** the platform consumer handles client errors, rebuilds the client, and joins in the background, so `start()` no longer blocks the service.
 - **Regression test:** [`packages/platform/test/int/kafka.test.ts`](packages/platform/test/int/kafka.test.ts) ("kafka consumer without reachable brokers"). The three stations stuck before the outage (item 16) explain at most 84 of the 126 missing readings [derived: 3 × 28 readings per probe station in `probes/readings.csv`]; the remaining 42 have no named cause and are not isolated.
 
-### 16. OCPP deduplication returned another message's stored response after a simulator restart
+</details>
+
+<details id="finding-16">
+<summary>16. OCPP deduplication returned another message's stored response after a simulator restart</summary>
 
 - **Found by:** the kafka-broker-loss drill with one broker, first run ([`kafka-broker-loss-1-20261108T122708Z`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/result.json), **FAILED**, kept with a [`NOTE.md`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/NOTE.md)).
 - **Symptom (measured, `result.json`):** 30 of 100 probe readings were missing. All of them belonged to three stations that were stuck before the outage.
@@ -713,18 +415,27 @@ Every item below was found during this build by a code review, a load test or a 
 - **Fix:** deduplicate on uniqueId, action and payload hash (`messageKey` in [`services/sessions/src/ocpp/ocpp.service.ts`](services/sessions/src/ocpp/ocpp.service.ts)), and give the simulator boot-prefixed message ids.
 - **Regression test:** [`services/sessions/test/int/ocpp.test.ts`](services/sessions/test/int/ocpp.test.ts) ("uniqueId reuse after a firmware restart").
 
-### 17. The first station-offline-replay run was invalid and still passed
+</details>
+
+<details id="finding-17">
+<summary>17. The first station-offline-replay run was invalid and still passed</summary>
 
 - **Found by:** reading the first run of `drills/station-offline-replay.sh`.
 - **Symptom:** `POST /offline` returned HTTP 400, so no station went offline, yet the drill passed. The run was deleted.
 - **Fix:** the drill now checks that the stations really went offline (`stations_taken_offline`) and that the connected count dropped (`connected_dropped_during_offline`). The valid rerun ([`station-offline-replay-20261108T141434Z`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json), passed, measured) simulated 10 minutes offline at time scale 1 with 20 stations: 31 s to drain the replay queues, 0 dropped queue entries, 0 of 1,272 probe readings missing, 0 duplicate rows, and 960 replayed rows flagged. The 24 h offline replay at time scale 60 ([`station-offline-replay-20261108T151006Z`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json), **FAILED** and **inconclusive**, kept with a [`NOTE.md`](docs/drill-output/station-offline-replay-20261108T151006Z/NOTE.md)) did not show a loss. The replay queue was still draining (140,564 messages at its peak, 89,114 when the 600 s wait ended), and then the harness restored the simulator before the queue had drained, which discarded the remaining in-memory queue and produced the 82,914 "missing" readings. That is a harness bug, and a rerun that waits for the queue to drain is still to do.
 
-### 18. The drill harness wrote curl's "000" as a number and produced invalid JSON
+</details>
+
+<details id="finding-18">
+<summary>18. The drill harness wrote curl's "000" as a number and produced invalid JSON</summary>
 
 - **Found by:** the `result.json` of the two-broker drill (item 15), which contained `"measured":000`.
 - **Fix:** the harness now normalises every check value. In the kept two-broker run that one token was changed to `0` by hand so that the file parses (stated in its `NOTE.md`). The chart generator also skips and reports any malformed `result.json` instead of failing.
 
-### 19. Allocation feedback loop: one SetChargingProfile result caused a round that resent every profile
+</details>
+
+<details id="finding-19">
+<summary>19. Allocation feedback loop: one SetChargingProfile result caused a round that resent every profile</summary>
 
 - **Found by:** the failed slow-Postgres run ([`slow-postgres-20261108T142904Z`](docs/drill-output/slow-postgres-20261108T142904Z/result.json), **FAILED**, kept with a [`NOTE.md`](docs/drill-output/slow-postgres-20261108T142904Z/NOTE.md)), followed by the Prometheus metrics `sessions_charging_profiles_sent_total` and `outbox_published_total`.
 - **Symptom (observed, not saved as a file):** about 140 SetChargingProfile/s published for a 20-site, 200-station fleet, with all three Kafka brokers at 140-160% CPU.
@@ -734,28 +445,40 @@ Every item below was found during this build by a code review, a load test or a 
 - **Result (observed via Prometheus, not saved as a file):** about 3 profiles/s in total (changed 1.49, refresh 1.15, retry 0.37, new 0.04).
 - **Regression tests:** [`services/sessions/test/unit/plan.test.ts`](services/sessions/test/unit/plan.test.ts) ("re-sends only the session that changed", "retries an unconfirmed profile ... 30 s") and [`services/sessions/test/int/two-phase.test.ts`](services/sessions/test/int/two-phase.test.ts).
 
-### 20. HAProxy kept stale gateway IPs
+</details>
+
+<details id="finding-20">
+<summary>20. HAProxy kept stale gateway IPs</summary>
 
 - **Found by:** three drill reruns that ran with 0 of 200 stations connected. They were invalid and were deleted.
 - **Cause:** HAProxy resolved `station-gateway-1` and `station-gateway-2` only at startup. Recreated gateway containers got new IPs, so every upgrade got 503.
 - **Fix:** `resolvers docker` (127.0.0.11) with `init-addr libc,none` in [`infra/haproxy/haproxy.cfg`](infra/haproxy/haproxy.cfg). Every drill now calls `require_fleet` and aborts if the fleet is not fully connected. See [ADR 0004](docs/adr/0004-websocket-connection-routing.md) and the [runbook](docs/runbook.md).
 - **Regression test:** none; the guard is the `require_fleet` check in the drills.
 
-### 21. The slow-Postgres drill never lifted its CPU cap
+</details>
+
+<details id="finding-21">
+<summary>21. The slow-Postgres drill never lifted its CPU cap</summary>
 
 - **Found by:** the notes of the two failed Kafka runs ([`kafka-broker-loss-1-20261108T122708Z`](docs/drill-output/kafka-broker-loss-1-20261108T122708Z/NOTE.md), [`kafka-broker-loss-2-20261108T123144Z`](docs/drill-output/kafka-broker-loss-2-20261108T123144Z/NOTE.md)), whose telemetry database was still capped.
 - **Cause:** `docker update --cpus 0` does not remove a limit, so the telemetry Postgres stayed at 0.05 CPU after the drill. The affected slow-Postgres run was deleted, and the two failed Kafka runs carry a note.
 - **Fix:** the drill restores the Docker VM CPU count. The telemetry postgres-exporter also skips per-table collectors.
 - **Regression test:** none.
 
-### 22. Unbounded Jaeger memory
+</details>
+
+<details id="finding-22">
+<summary>22. Unbounded Jaeger memory</summary>
 
 - **Found by:** the failed slow-Postgres run again: Kafka itself was slow.
 - **Symptom (observed, not saved as a file):** 864 MB even at 10% sampling, with swap full again. `kafka-producer-perf-test` with acks=all at 50 msg/s gave p50 493 ms and p99 1,230 ms (observed, not saved).
 - **Fix:** a Jaeger v2 config, [`infra/jaeger/config.yaml`](infra/jaeger/config.yaml), with memory `max_traces` 20000, plus `mem_limit: 400m`. After a rolling Kafka restart the same producer test gave p50 14 ms and p99 295 ms at 50 msg/s (observed, not saved).
 - **Regression test:** none; it is a configuration change.
 
-### 23. The first slow-Postgres failures were a Kafka leader move and an overloaded VM, not the slow database
+</details>
+
+<details id="finding-23">
+<summary>23. The first slow-Postgres failures were a Kafka leader move and an overloaded VM, not the slow database</summary>
 
 - **Found by:** a slow-Postgres run ([`slow-postgres-20261108T150304Z`](docs/drill-output/slow-postgres-20261108T150304Z/result.json), **FAILED** on one check, kept with a [`NOTE.md`](docs/drill-output/slow-postgres-20261108T150304Z/NOTE.md)).
 - **What held (measured, `result.json` and `NOTE.md`):** ingest stalled and the backlog stayed in Kafka (peak consumer lag 133 records, below the 200-record threshold of `lag_drained_within_s`, so its value of 0 does not show a drain); the durable lag p99 was 1.37 s 90 s after recovery (target < 5 s); 0 of 2,103 probe readings were missing.
@@ -769,6 +492,8 @@ Every item below was found during this build by a code review, a load test or a 
 **Passing reruns.** [`kafka-broker-loss-1-20261108T140530Z`](docs/drill-output/kafka-broker-loss-1-20261108T140530Z/result.json) passed with 0 of 96 probe readings missing. [`kafka-broker-loss-2-20261108T140952Z`](docs/drill-output/kafka-broker-loss-2-20261108T140952Z/result.json) passed (measured): the gateway stayed live (HTTP 200 on `/health/live`), produce errors rose to 7.20/s at most, the buffer depth to 187 at most, and 0 of 254 probe readings were missing. The failed first runs stay as evidence with their notes. The gateway-instance-loss rerun passed with 31 s (item 14), and the station-offline-replay rerun passed (item 17).
 
 **Runs before the fixes.** The reconnect-storm run ([`reconnect-storm-20261108T120311Z`](docs/drill-output/reconnect-storm-20261108T120311Z/timeline.jsonl)) shows at most 199 connected stations of 200 in its timeline (`sim_connected`). A slow-postgres run from the same period passed its checks, but it was deleted after item 21 showed that the CPU cap was never lifted; three of the later slow-Postgres runs (items 19 and 23: 142904Z, 150304Z, 160959Z) failed, and the fourth (162708Z, item 23) passed. The reconnect-storm run passed its checks.
+
+</details>
 
 ## Known limits and production gaps
 
@@ -809,7 +534,9 @@ Every item below was found during this build by a code review, a load test or a 
 
 ```
 docs/
-  adr/                 14 ADRs (0000 to 0013) plus the index: requirements, architecture, contracts, per-service decisions
+  adr/                 ADRs and the index: requirements, architecture, contracts, per-service decisions
+  metrics.md           generated: the full metrics table
+  drills.md            generated: every drill run with its timeline chart
   runbook.md           start, stop, signals worth alerting on, failure recipes, known gaps
   load-output/         raw k6 summaries (+ .env.json setup records) and tool outputs: the source of every measured number
   drill-output/        raw failure-drill output: timeline.jsonl, events.log, result.json per run
@@ -831,7 +558,7 @@ packages/
 load/                  k6 scripts, run.sh (records the setup next to each summary) and targets.json
 drills/                failure drills: broker loss, gateway loss, reconnect storm, slow Postgres, allocator down, station offline replay
 scripts/
-  charts/              chart and metrics-table generator (plain Node, no dependencies)
+  charts/              generator for the charts, the metrics table, the drills page and the generated README blocks (plain Node, no dependencies)
   backfill-telemetry/  Go: history straight into TimescaleDB, compression and query measurements
   check-topics.mjs     checks that the Kafka topic list in code and in infra/kafka/topics.sh agree
 infra/                 compose configuration: HAProxy, Kafka topics, Postgres init, Prometheus, Grafana
@@ -839,13 +566,14 @@ docker-compose.yml     the whole stack
 Makefile               make check, make up, make down
 ```
 
-## Regenerating the charts and the metrics table
+## Regenerating the charts and the generated tables
 
 ```sh
 node scripts/charts/build.mjs
+node --test scripts/charts/     # generator tests; also run by make check
 ```
 
-This rewrites `docs/img/*.svg` and the two generated blocks in this README from the raw files only. See [`scripts/charts/README.md`](scripts/charts/README.md).
+This rewrites `docs/img/*.svg`, `docs/metrics.md`, `docs/drills.md` and the generated blocks in this README (stats, targets at a glance, charts, drills table, findings table) from the raw files only. See [`scripts/charts/README.md`](scripts/charts/README.md).
 
 ## CI and license
 
