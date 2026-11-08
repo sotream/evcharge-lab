@@ -1,0 +1,10 @@
+{
+  "acked": 9103,
+  "errors": 6,
+  "firstAckMs": 1794175940419,
+  "lastAckMs": 1794176044578,
+  "maxSeq": 9109,
+  "hosts": {
+    "postgres:5432": 9103
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "sim_connected": "sum(sim_connected_stations)",
+  "sim_active_sessions": "sum(sim_active_sessions)",
+  "sessions_5xx_per_s": "sum(rate(http_server_requests_seconds_count{service=\"sessions\",status=~\"5..\"}[10s]))",
+  "driver_api_5xx_per_s": "sum(rate(http_server_requests_seconds_count{service=\"driver-api\",status=~\"5..\"}[10s]))",
+  "ocpp_callerror_out_per_s": "sum(rate(ocpp_messages_total{direction=\"out\",type=\"error\"}[10s]))",
+  "sessions_5xx_total": "sum(http_server_requests_seconds_count{service=\"sessions\",status=~\"5..\"})",
+  "driver_api_5xx_total": "sum(http_server_requests_seconds_count{service=\"driver-api\",status=~\"5..\"})",
+  "ocpp_error_out_total": "sum(ocpp_messages_total{direction=\"out\",type=\"error\"})",
+  "callresult_p99_s": "histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket[30s])))"
+}

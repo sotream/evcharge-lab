@@ -64,7 +64,7 @@ Every later ADR picks technologies and topologies. Those choices are only defens
 | Billing | exactly-once effect: 0 lost, 0 double charges; invoice p99 < 5 min after session end |
 | Smart charging | the site power cap is never exceeded by allocation; reallocation after session start/stop p99 < 5 s; a new session starts at a safe minimum profile until allocated |
 | Degradation | if the allocation service is down, gateway applies a static safe share (cap / connectors); charging never stops because the backend is down |
-| Durability | RPO 0 for sessions and billing (synchronous commit); RPO ≤ 5 min for telemetry |
+| Durability | RPO 0 for sessions and billing (synchronous commit); RPO ≤ 5 min for telemetry. **Amended by ADR 0018:** RPO 0 holds on one node (argued, not re-measured) and across node loss only with a synchronous standby; with the lab's asynchronous replica it is missed (281 and 282 acknowledged writes lost in two runs when the replica was unreachable for 3 s before the primary died). |
 
 ## Lab targets (one instance, MacBook Air M1, docker compose)
 

@@ -61,6 +61,10 @@ Cross-cutting decisions: [0000](docs/adr/0000-requirements-and-capacity.md) requ
 - [ADR 0015](docs/adr/0015-read-replica-and-read-your-writes-for-sessions.md): the sessions read replica and read-your-writes by LSN. Drill: [`replica-lag.sh`](drills/replica-lag.sh), run `replica-lag-20261108T183638Z` (11 of 11 checks): the replica was held back for 240 s, peak lag 239.4 s and drained 9 s after release; 0 read-your-writes violations in 624 checks; reads of a driver's own writes fell back to the primary after the 200 ms wait; driver API read p99 0.173 s during the pause (target < 0.3 s). Two earlier runs are kept with notes.
 - [ADR 0016](docs/adr/0016-consensus-kraft-quorum.md): the KRaft controller quorum, quorum maths, and what losing the quorum does. Drill: [`kraft-quorum-loss.sh`](drills/kraft-quorum-loss.sh), run `kraft-quorum-loss-20261108T185039Z` (12 of 12 checks) with 2 of 3 nodes stopped for about 165 s (18:51:44Z to 18:54:29Z, `events.log`): 200 of 200 stations stayed connected, 0 RemoteStopTransaction sent, quorum back in 4 s, first acknowledged produce after 8 s, 0 of 393 probe readings missing (178 generated during this run, 117 while the nodes were down; the rest are left over from run T184440Z). Targets missed during the outage: OCPP CALLRESULT p99 reached 2.48 s (target < 0.5 s) and telemetry ingest lag p99 29.9 s during and 59.2 s after (target < 5 s).
 - [ADR 0017](docs/adr/0017-consistency-models.md): the consistency model, mechanism and staleness bound of every piece of state.
+- [ADR 0018](docs/adr/0018-postgres-failover-and-backup-restore.md): Postgres failover and backup/restore, async against sync (Apple M4 Pro, one run per row). Drills: [`postgres-failover.sh`](drills/postgres-failover.sh), [`backup-restore.sh`](drills/backup-restore.sh). The replica promotes and the services reconnect in 0.37 to 0.48 s (DB RTO), but drivers see 1.1 to 10.3 s consistent with the driver-api circuit breaker (openMs 10 s) opening; the breaker state was not recorded. **RPO 0 is not met with the asynchronous replica:** when the replica was cut off for 3 s before the primary was killed, 282 and 281 acknowledged writes were lost in two runs (probe commits over 3.1 s); the rerun also lost 10 acknowledged reservations and left 32 overlapping pairs of acknowledgements, each with a lost reservation on one side. With a synchronous standby the same fault lost 0, at the price of a 3.64 s write gap. Backup: 163,044 KiB (159 MiB) in 1.07 s, restored into a separate container in 2.10 s, all 10 checks passed (readiness plus 9 integrity checks), data age 52.7 s (no WAL archiving, so nothing after the backup comes back).
+- [ADR 0019](docs/adr/0019-invariant-checking-under-faults.md): the reservation invariant checked from an operation history ([`load/history/`](load/history/), unit-tested) under a sessions pause (15 s), a sessions restart and a primary failover. Passed under the pause and the restart; failed (10 lost acknowledged reservations, 32 overlapping pairs each with a lost reservation on one side) in the async failover with an unreachable replica; with the constraint switched off the checker reports 292 violations in 883 operations. It is not a linearizability check; the ADR says what it does not prove.
+- Consumer group rebalance ([ADR 0012](docs/adr/0012-kafka-replication-and-producer-backpressure.md), [`consumer-rebalance.sh`](drills/consumer-rebalance.sh)): a killed member is dropped after 45.1 and 45.3 s (two runs), the survivor owns all 24 partitions after 46.2 and 46.4 s, a restarted member is back in 0.2 to 0.4 s, the lag peak is 371 and 409 records, 0 readings lost. Offsets moved back by 200 records per partition: 4,800 records were read again and all 4,800 were suppressed by the unique index (0 duplicate rows).
+- Load from another machine: [`load/run-remote.sh`](load/run-remote.sh) (see the runbook). Not run yet; remote numbers will be kept apart from local ones.
 - 24 h station offline replay at simulator time scale 60 (`station-offline-replay-20261108T190213Z`, 20 stations offline for 1,440 simulated minutes): replay queues empty 40 s after the after phase began (about 49 s after the offline window ended; the reconnect time itself is not recorded), 123,652 probe readings generated, 0 missing, 0 duplicate rows. The replayed-row flag is not checked at time scale 60. The earlier INCONCLUSIVE run (151006Z) is kept.
 - Other drills in [`drills/`](drills/): gateway instance loss, reconnect storm, slow Postgres, smart-charging down. Raw output is in `docs/drill-output/`.
 
@@ -123,6 +127,28 @@ Labels: **measured** is a value read from a raw file; **derived** is calculated 
 | Driver API: read p99 | ≤ 300 ms | 255.2 ms (met) | measured | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json), [`k6-driver-api-reads.env.json`](docs/load-output/k6-driver-api-reads.env.json) |  |
 | Simulator: 10,000 stations at time scale 1 | n/a | all connected after 5 s; peak 8,141 msg/s at the stub; peak RSS 253 MB; event-loop lag max 37.49 ms | measured | [`simulator-scale-10k-scale1.jsonl`](docs/load-output/simulator-scale-10k-scale1.jsonl) |  |
 | Simulator: 10,000 stations at time scale 60 | n/a | all connected after 6 s; peak 14,956 msg/s at the stub; peak RSS 529 MB; event-loop lag max 134.35 ms | measured | [`simulator-scale-10k-scale60.jsonl`](docs/load-output/simulator-scale-10k-scale60.jsonl) |  |
+| Drill consumer-rebalance (20261108T214311Z): fleet_connected_before | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): both_instances_balanced_before | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): rebalance_after_kill_s | ≤ 60 | 48 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): rebalance_after_restart_s | ≤ 60 | 3 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): lag_drained_s | ≤ 180 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): probe_readings_generated | ≥ 1 | 3,640 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): forced_redelivery_records_suppressed | ≥ 1 | 4,800 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): forced_redelivery_lag_drained_s | ≤ 180 | 1 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214311Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214311Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): fleet_connected_before | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): both_instances_balanced_before | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): rebalance_after_kill_s | ≤ 60 | 48 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): rebalance_after_restart_s | ≤ 60 | 2 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): lag_drained_s | ≤ 180 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): probe_readings_generated | ≥ 1 | 6,580 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): duplicate_rows | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): forced_redelivery_records_suppressed | ≥ 1 | 4,800 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): forced_redelivery_lag_drained_s | ≤ 180 | 0 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
+| Drill consumer-rebalance (20261108T214804Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/consumer-rebalance-20261108T214804Z/result.json) |  |
 | Drill gateway-instance-loss (20261108T115832Z): stations_reconnected_within_s | ≤ 60 | no measurement (**FAIL**) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json) |  |
 | Drill gateway-instance-loss (20261108T115832Z): routes_present_after_loss | ≥ 200 | 199 (**FAIL**) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json) |  |
 | Drill gateway-instance-loss (20261108T115832Z): fleet_connected_after_recovery | ≥ 200 | 199 (**FAIL**) | measured | [`result.json`](docs/drill-output/gateway-instance-loss-20261108T115832Z/result.json) |  |
@@ -173,6 +199,60 @@ Labels: **measured** is a value read from a raw file; **derived** is calculated 
 | Drill kraft-quorum-loss (20261108T185039Z): min_active_sessions_during_outage | ≥ 1 | 186 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
 | Drill kraft-quorum-loss (20261108T185039Z): probe_readings_generated | ≥ 1 | 393 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
 | Drill kraft-quorum-loss (20261108T185039Z): probe_readings_missing | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/kraft-quorum-loss-20261108T185039Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): probe_acks_before_kill | ≥ 100 | 2,688 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): reserve_ok_before_kill | ≥ 1 | 92 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): rto_db_write_s | ≤ 60 | 0.46 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): rto_driver_reservation_s | ≤ 60 | 10.27 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall0 (20261108T203614Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): probe_acks_before_kill | ≥ 100 | 2,701 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): reserve_ok_before_kill | ≥ 1 | 80 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): rto_db_write_s | ≤ 60 | 0.48 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): rto_driver_reservation_s | ≤ 60 | 1.19 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): acknowledged_probe_writes_lost | = 0 | 282 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): history_checker_violations | = 0 | 1 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T204000Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T204000Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): probe_acks_before_kill | ≥ 100 | 2,703 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): reserve_ok_before_kill | ≥ 1 | 87 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): rto_db_write_s | ≤ 60 | 0.37 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): rto_driver_reservation_s | ≤ 60 | 10.09 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): acknowledged_probe_writes_lost | = 0 | 281 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): history_checker_violations | = 0 | 1 (**FAIL**) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-async-stall3 (20261108T220826Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-async-stall3-20261108T220826Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): probe_acks_before_kill | ≥ 100 | 2,653 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): reserve_ok_before_kill | ≥ 1 | 85 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): rto_db_write_s | ≤ 60 | 0.36 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): rto_driver_reservation_s | ≤ 60 | 1.1 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall0 (20261108T204337Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall0-20261108T204337Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): probe_acks_before_kill | ≥ 100 | 2,643 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): reserve_ok_before_kill | ≥ 1 | 84 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): rto_db_write_s | ≤ 60 | 0.38 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): rto_driver_reservation_s | ≤ 60 | 9.93 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T204731Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T204731Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): probe_acks_before_kill | ≥ 100 | 2,659 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): reserve_ok_before_kill | ≥ 1 | 94 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): rto_db_write_s | ≤ 60 | 0.4 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): rto_driver_reservation_s | ≤ 60 | 9.93 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-auto-sync-stall3 (20261108T221218Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-auto-sync-stall3-20261108T221218Z/result.json) |  |
+| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): fleet_connected_before_kill | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
+| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): probe_acks_before_kill | ≥ 100 | 2,717 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
+| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): reserve_ok_before_kill | ≥ 1 | 29 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
+| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): acknowledged_probe_writes_lost | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
+| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
+| Drill postgres-failover-manual-async-stall0 (20261108T215357Z): fleet_connected_after | ≥ 200 | 200 (pass) | measured | [`result.json`](docs/drill-output/postgres-failover-manual-async-stall0-20261108T215357Z/result.json) |  |
 | Drill reconnect-storm (20261108T120311Z): fleet_reconnected_within_s | ≤ 60 | 11 (pass) | measured | [`result.json`](docs/drill-output/reconnect-storm-20261108T120311Z/result.json) |  |
 | Drill reconnect-storm (20261108T120311Z): gateways_ready_after_storm | = 400 | 400 (pass) | measured | [`result.json`](docs/drill-output/reconnect-storm-20261108T120311Z/result.json) |  |
 | Drill replica-lag-20261108T181636Z (20261108T181636Z): result.json | n/a | no result.json | measured | [`timeline.jsonl`](docs/drill-output/replica-lag-20261108T181636Z/timeline.jsonl) |  |
@@ -198,6 +278,20 @@ Labels: **measured** is a value read from a raw file; **derived** is calculated 
 | Drill replica-lag (20261108T183638Z): stale_unresolved | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
 | Drill replica-lag (20261108T183638Z): stale_excess_over_lag_s | ≤ 0 | -12.72 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
 | Drill replica-lag (20261108T183638Z): client_read_errors | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/replica-lag-20261108T183638Z/result.json) |  |
+| Drill reservation-invariant-none (20261108T205643Z): reserve_ok_before_fault | ≥ 1 | 60 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-20261108T205643Z/result.json) |  |
+| Drill reservation-invariant-none (20261108T205643Z): recovered_within_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-20261108T205643Z/result.json) |  |
+| Drill reservation-invariant-none (20261108T205643Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-20261108T205643Z/result.json) |  |
+| Drill reservation-invariant-none-mutated (20261108T205511Z): reserve_ok_before_fault | ≥ 1 | 126 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
+| Drill reservation-invariant-none-mutated (20261108T205511Z): recovered_within_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
+| Drill reservation-invariant-none-mutated (20261108T205511Z): constraints_dropped | ≥ 1 | 5 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
+| Drill reservation-invariant-none-mutated (20261108T205511Z): checker_detects_mutation | = 1 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
+| Drill reservation-invariant-none-mutated (20261108T205511Z): constraints_restored | = 5 | 5 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-none-mutated-20261108T205511Z/result.json) |  |
+| Drill reservation-invariant-pause (20261108T205154Z): reserve_ok_before_fault | ≥ 1 | 60 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-pause-20261108T205154Z/result.json) |  |
+| Drill reservation-invariant-pause (20261108T205154Z): recovered_within_s | ≤ 60 | 1 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-pause-20261108T205154Z/result.json) |  |
+| Drill reservation-invariant-pause (20261108T205154Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-pause-20261108T205154Z/result.json) |  |
+| Drill reservation-invariant-restart (20261108T205335Z): reserve_ok_before_fault | ≥ 1 | 57 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json) |  |
+| Drill reservation-invariant-restart (20261108T205335Z): recovered_within_s | ≤ 60 | 11 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json) |  |
+| Drill reservation-invariant-restart (20261108T205335Z): history_checker_violations | = 0 | 0 (pass) | measured | [`result.json`](docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json) |  |
 | Drill slow-postgres (20261108T142904Z): ocpp_callresult_p99_s_during | ≤ 0.5 | 2.24 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
 | Drill slow-postgres (20261108T142904Z): lag_drained_within_s | ≤ 300 | 7 (pass) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
 | Drill slow-postgres (20261108T142904Z): ingest_lag_p99_s_after_recovery | ≤ 5 | 118.52 (**FAIL**) | measured | [`result.json`](docs/drill-output/slow-postgres-20261108T142904Z/result.json) |  |
@@ -296,6 +390,18 @@ Drawn power against the sum of the site caps through the allocator outage drill,
 
 ![smart-charging: allocation under the site cap](docs/img/smart-charging-cap.svg)
 
+#### Drill timeline: consumer-rebalance-20261108T214311Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: consumer-rebalance-20261108T214311Z](docs/img/drill-consumer-rebalance-20261108T214311Z.svg)
+
+#### Drill timeline: consumer-rebalance-20261108T214804Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: consumer-rebalance-20261108T214804Z](docs/img/drill-consumer-rebalance-20261108T214804Z.svg)
+
 #### Drill timeline: gateway-instance-loss-20261108T115832Z
 
 Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
@@ -344,6 +450,48 @@ Key series with before, during and after phases and the checks from `result.json
 
 ![Drill timeline: kraft-quorum-loss-20261108T185039Z](docs/img/drill-kraft-quorum-loss-20261108T185039Z.svg)
 
+#### Drill timeline: postgres-failover-auto-async-stall0-20261108T203614Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: postgres-failover-auto-async-stall0-20261108T203614Z](docs/img/drill-postgres-failover-auto-async-stall0-20261108T203614Z.svg)
+
+#### Drill timeline: postgres-failover-auto-async-stall3-20261108T204000Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
+
+![Drill timeline: postgres-failover-auto-async-stall3-20261108T204000Z](docs/img/drill-postgres-failover-auto-async-stall3-20261108T204000Z.svg)
+
+#### Drill timeline: postgres-failover-auto-async-stall3-20261108T220826Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: FAILED.
+
+![Drill timeline: postgres-failover-auto-async-stall3-20261108T220826Z](docs/img/drill-postgres-failover-auto-async-stall3-20261108T220826Z.svg)
+
+#### Drill timeline: postgres-failover-auto-sync-stall0-20261108T204337Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: postgres-failover-auto-sync-stall0-20261108T204337Z](docs/img/drill-postgres-failover-auto-sync-stall0-20261108T204337Z.svg)
+
+#### Drill timeline: postgres-failover-auto-sync-stall3-20261108T204731Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: postgres-failover-auto-sync-stall3-20261108T204731Z](docs/img/drill-postgres-failover-auto-sync-stall3-20261108T204731Z.svg)
+
+#### Drill timeline: postgres-failover-auto-sync-stall3-20261108T221218Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: postgres-failover-auto-sync-stall3-20261108T221218Z](docs/img/drill-postgres-failover-auto-sync-stall3-20261108T221218Z.svg)
+
+#### Drill timeline: postgres-failover-manual-async-stall0-20261108T215357Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: postgres-failover-manual-async-stall0-20261108T215357Z](docs/img/drill-postgres-failover-manual-async-stall0-20261108T215357Z.svg)
+
 #### Drill timeline: reconnect-storm-20261108T120311Z
 
 Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
@@ -367,6 +515,30 @@ Key series with before, during and after phases and the checks from `result.json
 Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
 
 ![Drill timeline: replica-lag-20261108T183638Z](docs/img/drill-replica-lag-20261108T183638Z.svg)
+
+#### Drill timeline: reservation-invariant-none-20261108T205643Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: reservation-invariant-none-20261108T205643Z](docs/img/drill-reservation-invariant-none-20261108T205643Z.svg)
+
+#### Drill timeline: reservation-invariant-none-mutated-20261108T205511Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: reservation-invariant-none-mutated-20261108T205511Z](docs/img/drill-reservation-invariant-none-mutated-20261108T205511Z.svg)
+
+#### Drill timeline: reservation-invariant-pause-20261108T205154Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: reservation-invariant-pause-20261108T205154Z](docs/img/drill-reservation-invariant-pause-20261108T205154Z.svg)
+
+#### Drill timeline: reservation-invariant-restart-20261108T205335Z
+
+Key series with before, during and after phases and the checks from `result.json`. Result: PASSED.
+
+![Drill timeline: reservation-invariant-restart-20261108T205335Z](docs/img/drill-reservation-invariant-restart-20261108T205335Z.svg)
 
 #### Drill timeline: slow-postgres-20261108T142904Z
 

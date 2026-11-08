@@ -1,0 +1,41 @@
+{
+  "backupMs": 1071,
+  "backupKb": 163044,
+  "restoreCopyMs": 734,
+  "restoreStartToReadyMs": 1361,
+  "restoreTotalMs": 2095,
+  "backupFinishedToDisasterS": 60.9,
+  "newestReservationSource": "2026-11-08T21:53:22.925Z",
+  "newestReservationRestored": "2026-11-08T21:52:30.216Z",
+  "dataAgeS": 52.7,
+  "rowsLostPerTable": {
+    "sessions.sessions": 33,
+    "sessions.reservations": 5,
+    "sessions.processed_events": 422,
+    "billing.invoices": 27,
+    "billing.invoice_lines": 108,
+    "billing.payments": 21,
+    "billing.psp_captures": 21,
+    "billing.processed_events": 60
+  },
+  "countsBeforeBackup": {
+    "sessions.sessions": 3104,
+    "sessions.reservations": 1882,
+    "sessions.processed_events": 41795,
+    "billing.invoices": 2876,
+    "billing.invoice_lines": 11524,
+    "billing.payments": 2095,
+    "billing.psp_captures": 2095,
+    "billing.processed_events": 5980
+  },
+  "countsAfterBackup": {
+    "sessions.sessions": 3104,
+    "sessions.reservations": 1882,
+    "sessions.processed_events": 41805,
+    "billing.invoices": 2879,
+    "billing.invoice_lines": 11536,
+    "billing.payments": 2098,
+    "billing.psp_captures": 2098,
+    "billing.processed_events": 5983
+  }
+}

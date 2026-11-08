@@ -1,0 +1,39 @@
+2026-11-08T21:43:12Z RUN start the second instance (evcharge/telemetry-ingest:dev) on evcharge_default, host port 28096
+2026-11-08T21:43:13Z OK second instance serving /metrics after 1 s
+2026-11-08T21:43:13Z sampler pid 4319
+2026-11-08T21:43:13Z probes: {"stations":["st-0001-001","st-0003-001","st-0005-001","st-0007-001","st-0009-001","st-0011-001","st-0013-001","st-0015-001","st-0017-001","st-0019-001"],"file":"/tmp/sim-probes/probe-20261108214014-e1c441.jsonl"}
+2026-11-08T21:43:17Z OK both instances own partitions (24 in total) after 4 s
+2026-11-08T21:44:02Z CHECK fleet_connected_before measured=200 ge 200 pass=true
+2026-11-08T21:44:02Z CHECK both_instances_balanced_before measured=1 eq 1 pass=true
+2026-11-08T21:44:02Z baseline: instance 1 dedup=4800; meter_readings rows=41281; group partitions i1=12 i2=10
+2026-11-08T21:44:02Z PHASE during
+2026-11-08T21:44:02Z RUN docker kill evcharge-telemetry-ingest-2   (SIGKILL: no group leave, its last uncommitted batch is redelivered)
+2026-11-08T21:44:50Z OK instance 1 owns all 24 partitions after 48 s
+2026-11-08T21:45:35Z PHASE after
+2026-11-08T21:45:35Z RUN docker start evcharge-telemetry-ingest-2
+2026-11-08T21:45:38Z OK both instances own partitions again after 3 s
+2026-11-08T21:45:38Z OK group lag below 100 records after 0 s
+2026-11-08T21:46:38Z PHASE replay
+2026-11-08T21:46:38Z RUN stop the whole consumer group, then move its committed offsets back by 200 per partition
+2026-11-08T21:46:46Z OK consumer group is Empty after 1 s
+2026-11-08T21:46:47Z reset-offsets: telemetry-ingest.meter-values telemetry.meter-values.v1 18         460
+2026-11-08T21:46:47Z reset-offsets: telemetry-ingest.meter-values telemetry.meter-values.v1 17         2173
+2026-11-08T21:46:47Z reset-offsets: telemetry-ingest.meter-values telemetry.meter-values.v1 16         2489
+2026-11-08T21:46:47Z RUN start both instances again (fresh processes: their counters start at 0)
+2026-11-08T21:47:04Z OK both instances own partitions after the replay start after 2 s
+2026-11-08T21:47:05Z OK group lag below 100 records after the replay after 1 s
+2026-11-08T21:47:25Z forced redelivery: records re-read and suppressed by the unique index = 4800; rows newly inserted by the restarted instances = 836; meter_readings rows 44658 -> 45644
+2026-11-08T21:47:25Z probe check and uniqueness check
+2026-11-08T21:47:25Z probe readings generated=3640 missing_in_timescale=0 (until 2026-11-08T21:46:25Z)
+2026-11-08T21:47:26Z rebalance after the kill: 48s; both instances own partitions again 3s after the restart; lag peak 5080 records; drained 0s after the restart; redelivered records suppressed by the unique index: 0
+2026-11-08T21:47:26Z CHECK rebalance_after_kill_s measured=48 le 60 pass=true
+2026-11-08T21:47:26Z CHECK rebalance_after_restart_s measured=3 le 60 pass=true
+2026-11-08T21:47:26Z CHECK lag_drained_s measured=0 le 180 pass=true
+2026-11-08T21:47:26Z CHECK probe_readings_generated measured=3640 ge 1 pass=true
+2026-11-08T21:47:26Z CHECK probe_readings_missing measured=0 eq 0 pass=true
+2026-11-08T21:47:26Z CHECK duplicate_rows measured=0 eq 0 pass=true
+2026-11-08T21:47:26Z records redelivered by the SIGKILL and suppressed (informational, not a check: may legitimately be 0): 0
+2026-11-08T21:47:26Z CHECK forced_redelivery_records_suppressed measured=4800 ge 1 pass=true
+2026-11-08T21:47:26Z CHECK forced_redelivery_lag_drained_s measured=1 le 180 pass=true
+2026-11-08T21:47:26Z CHECK fleet_connected_after measured=200 ge 200 pass=true
+2026-11-08T21:47:27Z RESULT pass=true -> docs/drill-output/consumer-rebalance-20261108T214311Z/result.json
