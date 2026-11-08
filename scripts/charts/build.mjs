@@ -48,8 +48,8 @@ const CAPTIONS = {
 };
 const caption = (f) => CAPTIONS[f] ?? [`Drill timeline: ${f.replace(/^drill-/, '').replace(/\.svg$/, '')}`, `Key series with before, during and after phases and the checks from \`result.json\`. Result: ${drillById.get(f)?.result ? (drillById.get(f).result.pass ? 'PASSED' : 'FAILED') : 'no result.json'}.`];
 // Only the headline charts go in the README; telemetry-storage goes to docs/metrics.md, drill timelines to docs/drills.md.
-const HEADLINE = Object.keys(CAPTIONS).filter((f) => f !== 'telemetry-storage.svg');
-splice('charts', charts.filter((c) => HEADLINE.includes(c.file)).map((c) => { const [t, d] = caption(c.file); return `#### ${t}\n\n${d}\n\n![${t}](docs/img/${c.file})\n`; }).join('\n'));
+const HEADLINE = new Set(Object.keys(CAPTIONS).filter((f) => f !== 'telemetry-storage.svg'));
+splice('charts', charts.filter((c) => HEADLINE.has(c.file)).map((c) => { const [t, d] = caption(c.file); return `#### ${t}\n\n${d}\n\n![${t}](docs/img/${c.file})\n`; }).join('\n'));
 fs.writeFileSync(readme, md);
 
 const storage = charts.find((c) => c.file === 'telemetry-storage.svg'), [st, sd] = CAPTIONS['telemetry-storage.svg'];

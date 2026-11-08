@@ -35,9 +35,9 @@ export function findingsTable(md) {
 }
 
 // Stats ---------------------------------------------------------------------------------------------
+const ls = (rel, f) => fs.readdirSync(path.join(ROOT, rel)).filter(f);
 export function counts(md) {
-  const ls = (rel, f) => fs.readdirSync(path.join(ROOT, rel)).filter(f);
-  const ds = D.drills(), fs_ = parseFindings(md);
+  const ds = D.drills(), found = parseFindings(md);
   return {
     services: ls('services', (d) => exists(`services/${d}/package.json`) || exists(`services/${d}/go.mod`)).length,
     adrs: ls('docs/adr', (f) => /^\d{4}-.*\.md$/.test(f)).length,
@@ -46,8 +46,8 @@ export function counts(md) {
     runsTotal: ds.length,
     drillsLatestPass: drillGroups().filter((g) => g.latest.result?.pass === true).length,
     drillsTotal: drillGroups().length,
-    findingsFixed: fs_.filter((f) => f.fixed).length,
-    findingsTotal: fs_.length,
+    findingsFixed: found.filter((f) => f.fixed).length,
+    findingsTotal: found.length,
   };
 }
 export function statsMarkdown(md) {
