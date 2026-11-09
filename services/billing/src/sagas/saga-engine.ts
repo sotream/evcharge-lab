@@ -471,6 +471,7 @@ export class SagaEngine {
       await this.callPsp('release', () => this.psp.release({ idempotencyKey: `release:${row.session_id}`, authorizationId }));
     } catch (err) {
       if (err instanceof PspTimeoutError) return this.retryLater(row, 'release', err);
+      if (err instanceof PspIdempotencyMismatchError) return this.parkIdempotencyMismatch(row, 'release', err);
       if (!(err instanceof PspDeclinedError)) throw err;
       this.log.warn({ sessionId: row.session_id, reason: err.reason }, 'PSP refused to release the hold');
     }

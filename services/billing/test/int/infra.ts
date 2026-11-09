@@ -67,7 +67,8 @@ export async function waitFor<T>(fn: () => T | Promise<T>, { timeoutMs = 60_000,
   for (;;) {
     try {
       const v = await fn();
-      if (v) return v as NonNullable<T>;
+      // An empty array is truthy but means nothing happened yet (a filter that matched nothing), so it does not count as success.
+      if (v && !(Array.isArray(v) && v.length === 0)) return v as NonNullable<T>;
     } catch (err) {
       last = err;
     }
