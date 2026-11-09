@@ -86,6 +86,9 @@ type ConsumerConfig struct {
 
 // Consumer is a consumer-group member with at-least-once processing.
 //
+// No service uses it yet (telemetry-ingest has its own pipeline), and it has no dead-letter
+// path: a failing batch is redelivered forever (ADR 0021).
+//
 // Each poll is split per partition; partitions are handled concurrently,
 // records within a partition strictly in order. After all handlers of a poll
 // returned, successful partitions are committed synchronously and failed ones

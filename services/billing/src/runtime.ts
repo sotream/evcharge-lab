@@ -7,6 +7,8 @@ import {
   type Logger,
   OutboxRelay,
   type Pool,
+  PROCESSED_EVENTS_RETENTION_MS,
+  purgeProcessedEvents,
   withInbox,
   withTx,
 } from '@evcharge/platform';
@@ -65,7 +67,13 @@ export function createBillingRuntime(config: BillingConfig, pool: Pool, log: Log
       workers: config.SAGA_WORKERS,
       batch: config.SAGA_BATCH,
       idlePollMs: config.SAGA_IDLE_POLL_MS,
-      maintenance: { intervalMs: 6 * 3600 * 1000, run: async () => void (await ensureInvoicePartitions(pool)) },
+      maintenance: {
+        intervalMs: 6 * 3600 * 1000,
+        run: async () => {
+          await ensureInvoicePartitions(pool);
+          await purgeProcessedEvents(pool, PROCESSED_EVENTS_RETENTION_MS);
+        },
+      },
     },
     log,
   );

@@ -358,7 +358,12 @@ export class StationGateway implements GatewayIntrospection {
     this.logger.debug({ stationId }, 'station connected');
   }
 
+  /** Connections whose registration is in flight, so the refresh loop does not start a second one. */
+  private readonly registering = new Set<StationConnection>();
+
   private async registerRoute(stationId: string, conn: StationConnection): Promise<void> {
+    if (this.registering.has(conn)) return;
+    this.registering.add(conn);
     try {
       const { epoch, previousInstance } = await this.registry.register(stationId, conn.connectedAt);
       if (conn.closed) {
@@ -372,6 +377,8 @@ export class StationGateway implements GatewayIntrospection {
       }
     } catch (err) {
       this.logger.warn({ stationId, err: errorMessage(err) }, 'route registration failed; the refresh loop retries');
+    } finally {
+      this.registering.delete(conn);
     }
   }
 
@@ -430,7 +437,11 @@ export class StationGateway implements GatewayIntrospection {
   // ------------------------------------------------------------------ periodic tasks
 
   private async refreshRoutes(): Promise<void> {
-    const owned = [...this.connections.values()].map((c) => ({ stationId: c.stationId, epoch: c.epoch, connectedAt: c.connectedAt }));
+    // A connection without an epoch never completed its registration. Refreshing it would write a route with epoch 0, which
+    // no eviction or unregister can match (both ignore epoch 0), so register it again instead.
+    const unregistered = [...this.connections.values()].filter((c) => c.epoch === 0);
+    for (const c of unregistered) void this.registerRoute(c.stationId, c);
+    const owned = [...this.connections.values()].filter((c) => c.epoch > 0).map((c) => ({ stationId: c.stationId, epoch: c.epoch, connectedAt: c.connectedAt }));
     if (owned.length === 0) return;
     const r = await this.registry.refresh(owned);
     this.metrics.routeRefresh.inc({ result: 'refreshed' }, r.refreshed);

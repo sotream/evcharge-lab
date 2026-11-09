@@ -25,6 +25,9 @@ export async function withInbox<T>(client: Queryable, consumerName: string, even
   return { duplicate: false, result: await fn() };
 }
 
+/** The dead-letter topics keep records 14 days (infra/kafka/topics.sh): a republished record must still be recognised as a duplicate. */
+export const PROCESSED_EVENTS_RETENTION_MS = 14 * 864e5;
+
 /** Deletes markers older than `olderThanMs` (keep longer than any possible redelivery window). */
 export async function purgeProcessedEvents(db: Queryable, olderThanMs: number): Promise<number> {
   const res = await db.query('DELETE FROM processed_events WHERE processed_at < now() - make_interval(secs => $1::double precision)', [olderThanMs / 1000]);

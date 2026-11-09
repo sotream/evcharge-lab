@@ -435,6 +435,30 @@ describe('station gateway (real Redis + Kafka, stub sessions)', () => {
   });
 });
 
+describe('route registration that failed', () => {
+  it('the refresh loop registers the route again with a real epoch instead of writing epoch 0', async () => {
+    const gw = await startGateway('retry', { ROUTE_REFRESH_S: '1' });
+    const id = uniq('retry');
+    const cred = sessions.addStation(id);
+    // INCR on a non-integer value fails, so the first registration cannot complete.
+    await redis.set(`route:epoch:${id}`, 'not-a-number');
+    const st = new TestStation(gw.wsUrl, id, cred.secret);
+    stations.push(st);
+    await st.connect();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await redis.exists(`route:station:${id}`)).toBe(0);
+    await redis.del(`route:epoch:${id}`);
+    const epoch = await waitFor(async () => {
+      const e = Number(await redis.hget(`route:station:${id}`, 'epoch'));
+      return e > 0 ? e : undefined;
+    }, { what: 'route registered by the refresh loop', timeoutMs: 8000 });
+    expect(epoch).toBeGreaterThan(0);
+    expect(await redis.hget(`route:station:${id}`, 'instance')).toBe(gw.instance);
+    st.close();
+    await waitFor(async () => (await redis.exists(`route:station:${id}`)) === 0, { what: 'route deleted on close' });
+  });
+});
+
 describe('admission control', () => {
   it('answers 503 + Retry-After above the upgrade rate, and at the connection cap', async () => {
     const gw = await startGateway('rate', { GATEWAY_MAX_UPGRADES_PER_S: '3' });

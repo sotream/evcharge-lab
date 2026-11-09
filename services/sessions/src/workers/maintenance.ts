@@ -3,7 +3,7 @@
  * work), monthly partition creation (ADR 0001 retention) and retention of dedup ledgers.
  */
 /* oxlint-disable no-await-in-loop */ // sweep batches run one after another
-import { type Logger, type Pool, purgeIdempotencyKeys, purgeProcessedEvents, withTx } from '@evcharge/platform';
+import { type Logger, type Pool, PROCESSED_EVENTS_RETENTION_MS, purgeIdempotencyKeys, purgeProcessedEvents, withTx } from '@evcharge/platform';
 import { m } from '../metrics';
 import { emitSessionEvent, type TopicNames } from '../outbox-events';
 import { errorMessage } from '../util';
@@ -90,7 +90,7 @@ export async function ensurePartitions(pool: Pool, months = 4): Promise<number> 
 export async function purgeLedgers(pool: Pool): Promise<void> {
   await pool.query("DELETE FROM ocpp_messages WHERE created_at < now() - interval '30 days'");
   await pool.query("DELETE FROM commands WHERE created_at < now() - interval '30 days'");
-  await purgeProcessedEvents(pool, 7 * 864e5);
+  await purgeProcessedEvents(pool, PROCESSED_EVENTS_RETENTION_MS);
   await purgeIdempotencyKeys(pool, 24 * 36e5);
 }
 

@@ -34,7 +34,7 @@ transaction CALLs within p99 500 ms.
 ### Hot-path budget (CALLRESULT p99 < 500 ms)
 
 `Authorize`, `StartTransaction` and `StopTransaction` call `sessions` synchronously. Each call has
-a single 1 s timeout and no retry inside the gateway: the station's own retry is the retry. A
+a single 1 s timeout and no retry inside the gateway, with one exception: a `409 in_flight` (the same idempotency key is still being processed) is retried once after 200 ms. Otherwise the station's own retry is the retry. A
 timeout or 5xx returns CALLERROR `InternalError`, and the station resends with the same uniqueId.
 p99 is measured against the 500 ms target in `load/`.
 
