@@ -1,3 +1,4 @@
+/* oxlint-disable no-await-in-loop */
 import { describe, expect, it } from 'vitest';
 import { HealthRegistry } from '../../src/health/health';
 import { Lifecycle } from '../../src/lifecycle/lifecycle';
@@ -52,6 +53,21 @@ describe('Lifecycle', () => {
     expect(r.timedOut || r.failed.includes('hangs')).toBe(true);
     expect(events).toEqual([]);
     expect(lines.some((l) => String(l['msg']).includes('deadline') || String(l['msg']).includes('hook failed'))).toBe(true);
+  });
+
+  it('never starts a hook after the deadline, even when the hook timeout and the deadline are due together', async () => {
+    // Before the fix about one run in eight ran 'late' after the deadline; 50 runs make a miss practically impossible.
+    let late = 0;
+    for (let i = 0; i < 50; i++) {
+      const { lc } = make(30, 2);
+      const events: string[] = [];
+      lc.onShutdown('late', () => events.push('late'));
+      lc.onShutdown('hangs', () => new Promise(() => {}));
+      await lc.shutdown();
+      await new Promise((r) => setTimeout(r, 3));
+      if (events.length) late++;
+    }
+    expect(late).toBe(0);
   });
 
   it('signal handler shuts down then exits; second signal exits at once', async () => {
