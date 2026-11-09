@@ -22,6 +22,7 @@ export function setup() {
     const r = http.post(`${URL}/internal/drivers`, JSON.stringify({ driverId, idTag }), { headers: { ...internalHeaders, 'idempotency-key': driverId } });
     if (r.status < 300) drivers.push(driverId);
   }
+  if (drivers.length < N) throw new Error(`registered ${drivers.length} of ${N} drivers: the burst would not be N concurrent drivers`);
   // A free connector: probe candidates with the first driver, release the probe at once. The simulator also uses these
   // connectors, so a fixed or time-derived pick lands on a held one and the run proves nothing (0 x 201, N x 409).
   const probe = (stationId, connectorId) => http.post(`${URL}/v1/reservations`, JSON.stringify({ stationId, connectorId }),

@@ -8,7 +8,7 @@ const URL = __ENV.URL || 'http://localhost:28082';
 export const options = {
   scenarios: { open: { executor: 'constant-arrival-rate', rate: T.readRps, timeUnit: '1s', duration: __ENV.DURATION || '60s', preAllocatedVUs: 300, maxVUs: 800 } },
   // Thresholds on the read scenario only: setup() registers and logs in (scrypt) and must not count as reads.
-  thresholds: { 'http_req_duration{scenario:open}': [`p(99)<${T.readP99Ms}`], 'http_req_failed{scenario:open}': ['rate<0.001'], dropped_iterations: [`rate<${T.readRps * 0.01}`] },
+  thresholds: { 'http_req_duration{scenario:open}': [`p(99)<${T.readP99Ms}`], 'http_req_failed{scenario:open}': ['rate==0'], dropped_iterations: ['count==0'] },
   summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max'],
 };
 export function setup() {
