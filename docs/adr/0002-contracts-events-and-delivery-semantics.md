@@ -82,7 +82,9 @@ room for 24 ingest consumers).
   with a different body returns 422, and a concurrent duplicate returns 409.
 - A record that cannot be decoded or stored (schema failure, a value the database rejects) goes to
   `<topic>.dlq` with the error in its headers, so one poison message cannot block a partition.
-  Handler errors from dependencies are retried, not dead-lettered (see above).
+  Handler errors from dependencies are retried, not dead-lettered (see above). A value the database
+  rejects (SQLSTATE class 22, 23 or 54) is dead-lettered after 5 tries; before that rule it was retried
+  forever, so one out-of-range `connectorId` would have stopped a partition (found in the November 2026 review).
 
 ### Internal HTTP
 
