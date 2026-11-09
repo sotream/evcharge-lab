@@ -1,0 +1,217 @@
+{
+  "root_group": {
+    "checks": [
+      {
+        "path": "::upgrade 101",
+        "id": "2a9258f30dbb204e44fec857a124cd69",
+        "passes": 2000,
+        "fails": 0,
+        "name": "upgrade 101"
+      }
+    ],
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": []
+  },
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "p(50)",
+      "p(95)",
+      "p(99)",
+      "max"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 75038.369007
+  },
+  "metrics": {
+    "vus_max": {
+      "contains": "default",
+      "values": {
+        "value": 2000,
+        "min": 2000,
+        "max": 2000
+      },
+      "type": "gauge"
+    },
+    "ws_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 9.15715415049998,
+        "p(50)": 0.5224584999999999,
+        "p(95)": 81.55471314999988,
+        "p(99)": 174.85250791999997,
+        "max": 197.392083
+      }
+    },
+    "ocpp_callerrors": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 0,
+        "rate": 0
+      },
+      "thresholds": {
+        "count<1": {
+          "ok": true
+        }
+      }
+    },
+    "ocpp_callresults_steady": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 149414,
+        "rate": 1991.1680114750604
+      },
+      "thresholds": {
+        "count>=119880": {
+          "ok": true
+        }
+      }
+    },
+    "ocpp_callresults": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "rate": 2303.848048507998,
+        "count": 172877
+      }
+    },
+    "ws_sessions": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "rate": 26.653031328725024,
+        "count": 2000
+      }
+    },
+    "ocpp_ticks_skipped_outstanding_call": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 589,
+        "rate": 7.84931772630952
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "rate": 332205.95449875196,
+        "count": 24928193
+      }
+    },
+    "ws_msgs_sent": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 174877,
+        "rate": 2330.501079836723
+      }
+    },
+    "ws_session_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 71018.56423505754,
+        "p(50)": 71021.636741,
+        "p(95)": 74621.43851765,
+        "p(99)": 74946.04443542,
+        "max": 75020.197577
+      }
+    },
+    "ocpp_calls_unanswered": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 0,
+        "rate": 0
+      },
+      "thresholds": {
+        "count<1": {
+          "ok": true
+        }
+      }
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 2000,
+        "fails": 0
+      }
+    },
+    "ocpp_callresult_ms": {
+      "thresholds": {
+        "p(99)<500": {
+          "ok": true
+        }
+      },
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 10.402638870410755,
+        "p(50)": 2,
+        "p(95)": 10,
+        "p(99)": 253,
+        "max": 1186
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 12681391,
+        "rate": 168998.7558074058
+      }
+    },
+    "iterations": {
+      "values": {
+        "rate": 26.653031328725024,
+        "count": 2000
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "ws_msgs_received": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 174877,
+        "rate": 2330.501079836723
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 75022.03715498996,
+        "p(50)": 75026.95966,
+        "p(95)": 75032.91774505,
+        "p(99)": 75033.83293401,
+        "max": 75034.851327
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 2000,
+        "min": 2000,
+        "max": 2000
+      }
+    }
+  },
+  "steadyWindowS": 60,
+  "offeredMsgPerS": 2500,
+  "callTimeoutS": 5
+}

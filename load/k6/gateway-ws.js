@@ -6,7 +6,7 @@
 //   - every station connects during the ramp (250/s), then ALL stations stay connected for the same steady window of
 //     DURATION_S seconds and close together; only CALLRESULTs inside the window count (ocpp_callresults_steady);
 //   - the offered load defaults to 2,000 stations x 1.25 Hz = 2,500 msg/s, above the 2,000 msg/s target;
-//   - a CALL with no answer for CALL_TIMEOUT_S, or still unanswered when the socket closes, is counted
+//   - a CALL with no answer for CALL_TIMEOUT_S, or still unanswered 2 s after the window closed, is counted
 //     (ocpp_calls_unanswered) instead of silently dropping out of the latency figures.
 // The rate threshold applies the ADR 0000 rate rule: at least 99.9% of the target, over the steady window.
 import ws from 'k6/ws';
@@ -56,12 +56,14 @@ export default function () {
       socket.setInterval(() => {
         // A CALL unanswered for too long is a loss, not a missing sample.
         for (const mid of Object.keys(pending)) if (Date.now() - pending[mid] > CALL_TIMEOUT_S * 1000) { unanswered.add(1); delete pending[mid]; }
+        if (Date.now() >= to) return; // the window is over: send nothing new, only wait for the answers still owed
         // OCPP: one outstanding CALL per direction. A station waits for the CALLRESULT before its next CALL.
         if (Object.keys(pending).length > 0) { skipped.add(1); return; }
         if (Math.random() < 0.5) call('Heartbeat', {});
         else call('MeterValues', { connectorId: 1, meterValue: [{ timestamp: new Date().toISOString(), sampledValue: [{ value: '7000', measurand: 'Power.Active.Import', unit: 'W' }] }] });
       }, 1000 / MSG_PER_S);
-      socket.setTimeout(() => socket.close(), Math.max(0, to + 1000 - Date.now()));
+      // Close 2 s after the window so answers to the last CALLs arrive first (p99 is tens of ms); whatever is still unanswered then is a loss.
+      socket.setTimeout(() => socket.close(), Math.max(0, to + 2000 - Date.now()));
     });
     socket.on('close', () => {
       unanswered.add(Object.keys(pending).length);

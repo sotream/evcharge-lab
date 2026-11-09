@@ -98,9 +98,12 @@ CALLRESULT p99 under 500 ms. The measurements (raw files in `docs/load-output/`)
 | `gateway-10k-connections.json` | native gateway process, simulator with 10,000 stations, real Redis/Kafka | 10,000 connections, peak RSS 525 MB | connections: yes; memory (< 1.5 GB): yes |
 | `k6-gateway-ws-1000st-1hz.json` | gateway container, k6 in the compose network, 1,000 stations at 1 msg/s, one outstanding CALL each | 910.28 msg/s, CALLRESULT p50 9 ms, p99 1,446 ms, 0 CALLERROR | rate: not tested (offered load is at most 1,000 msg/s: 1,000 stations × 1 msg/s [derived]); p99: **missed** |
 | `k6-gateway-ws-2000st-1hz.json` | same, 2,000 stations | 1,139.03 msg/s, p50 137 ms, p99 3,228 ms, 0 CALLERROR | rate: **missed** (offered at most 2,000 msg/s, so this run tests the rate target); p99: **missed** |
+| `k6-gateway-ws-2000st-1.25hz.json` (+ 2 repeats in `gateway-ws-2000st-1.25hz-repeats-*`) | rewritten script (steady window, 2,500 msg/s offered, unanswered CALLs counted), M4 Pro, Docker VM 8 CPUs / 11.7 GiB, build with the per-socket limits | 2,490.2 / 2,498.1 / 2,491.3 msg/s in the steady window, p99 253 / 237 / 223 ms, 0 CALLERROR, 0 unanswered | rate: **met**; p99: **met** (measured; method, VM and build differ from the two runs above) |
+
+Correction (November 2026 review): the 2,000-station run above offered exactly 2,000 msg/s and k6 divided by the whole run including the connection ramp, so its rate could not reach the target by construction (ceiling about 1,545 msg/s); only its p99 miss is a real finding. The 1.25 Hz series replaces it as the test of the rate target; the old rows stay as recorded.
 
 - **Bottleneck:** one Node.js core per instance. A single gateway process was observed at about
-  108% CPU during the k6 runs (observed, not saved as a file). The saved 10,000-connection run is a different load
+  108% CPU during the first two k6 runs (not re-measured in the 1.25 Hz series) (observed, not saved as a file). The saved 10,000-connection run is a different load
   (stub sessions, no database): its `samples[].cpuPct` peaks at 110 and the last-30-second average is 52
   (`gateway-10k-connections.json`). Per message the work is JSON parse, zod validation, a Kafka produce with
   `acks=all` through a pure-JS client, and a second produce for the raw log.
