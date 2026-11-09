@@ -46,9 +46,11 @@ session.started  ─▶ AUTHORIZING ─▶ AUTHORIZED ──(session.completed)�
   invoice is `Paid` only when both captures succeed.
 - **Giving up on authorization.** After repeated unknown authorize outcomes, the saga voids the
   possible hold through the same idempotency key before it proceeds without a hold.
-- Every step runs as `SELECT ... FOR UPDATE` on the saga row, then the effect, then the state
-  transition and the outbox write. Workers claim due sagas with `SKIP LOCKED`, so steps for one
-  session never run concurrently.
+- Workers claim due sagas with `UPDATE ... FROM (SELECT ... FOR UPDATE SKIP LOCKED)` and a lease
+  (`SAGA_LEASE_MS`, 60 s by default). No row lock is held while a step calls the PSP or the tariff service. A step
+  that outlives its lease can run beside a second worker; that is safe because every external call carries an
+  idempotency key and each state transition is a guarded `UPDATE ... WHERE state = ...` (a lost race
+  throws `StateChanged` and does nothing). The earlier text of this ADR described a row lock; the code never had one.
 
 ### PSP
 
@@ -65,8 +67,10 @@ Delivery stays at-least-once. The effects become exactly-once through three thin
 2. Unique business keys (`invoice.session_id`, `capture:{invoiceId}`).
 3. Idempotency keys passed to the external side.
 
-The billing load test replays every `session.completed` event 3 times and checks that the number
-of invoices equals the number of sessions and that each invoice has one capture.
+The billing integration test "issues exactly one invoice and one capture per session"
+(`services/billing/test/int/saga.test.ts`, two replicas, 40% PSP timeouts) replays every `session.completed` event
+3 times and checks that the number of invoices equals the number of sessions and that each invoice has one capture.
+There is no billing script in `load/k6`, so billing throughput is not measured.
 
 ## Rejected alternatives
 

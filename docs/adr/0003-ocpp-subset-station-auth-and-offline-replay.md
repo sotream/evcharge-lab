@@ -68,7 +68,7 @@ p99 is measured against the 500 ms target in `load/`.
   one CALL at a time, as OCPP requires.
 - **Duplicates are made harmless where state lives. The gateway does not cache them:**
   - `StartTransaction` and `StopTransaction` are idempotent in `sessions` (Postgres unique key
-    `${stationId}:${uniqueId}`). The replay returns the same transactionId.
+    `${stationId}:${uniqueId}:${action}:${first 16 hex of a SHA-256 of the sorted payload}`, `messageKey` in `ocpp.service.ts`). A replay with the same payload returns the same transactionId; the same uniqueId with a different payload is a different request.
   - Meter values are deduplicated in telemetry-ingest on `(station, connector, timestamp)`
     (ADR 0008).
   - StatusNotification is applied last-write-wins on the station timestamp.

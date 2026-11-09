@@ -14,7 +14,7 @@
   <img alt="NestJS 12" src="https://img.shields.io/badge/NestJS-12-E0234E?logo=nestjs&logoColor=white">
   <img alt="Go 1.27" src="https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white">
   <img alt="PostgreSQL 18" src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white">
-  <img alt="TimescaleDB 2.24" src="https://img.shields.io/badge/TimescaleDB-2.24-FDB515?logo=timescale&logoColor=black">
+  <img alt="TimescaleDB 2.31" src="https://img.shields.io/badge/TimescaleDB-2.31-FDB515?logo=timescale&logoColor=black">
   <img alt="Apache Kafka 4.3 (KRaft)" src="https://img.shields.io/badge/Apache%20Kafka%20(KRaft)-4.3-231F20?logo=apachekafka&logoColor=white">
   <img alt="Redis 8" src="https://img.shields.io/badge/Redis-8-FF4438?logo=redis&logoColor=white">
   <img alt="OCPP 1.6J" src="https://img.shields.io/badge/OCPP-1.6J-0A7E8C">
@@ -52,11 +52,11 @@ Solid blue lines are synchronous HTTP requests, dashed purple lines are asynchro
 
 ## 5-minute quick start
 
-Prerequisites: Docker with a VM of about 8 GB (the measurements below ran on 8 CPUs and 8.3 GB), plus Node 26 and pnpm for `make check`. Go and `golangci-lint` are also required for `make check`, because it runs `go vet`, `golangci-lint run` and `go test -race` on the Go modules.
+Prerequisites: Docker with a VM of about 8 GB (the k6 runs below used 8 CPUs and 8.3 GB, the later drills 8 CPUs and 11.7 GiB; see the setup note), plus Node 26 and pnpm for `make check`. Go and `golangci-lint` are also required for `make check`, because it runs `go vet`, `golangci-lint run` and `go test -race` on the Go modules.
 
 ```sh
 docker compose up -d --build      # infra, services, HAProxy, observability and the simulator
-docker compose ps                 # wait until every service is healthy
+docker compose ps                 # infrastructure shows (healthy); the app services show Up (they have no healthcheck, see docs/runbook.md)
 curl -s 127.0.0.1:28089/status    # simulator: connected stations, active sessions, queue depth
 curl -s localhost:28081/health/ready   # any service: ports are listed below
 ```
@@ -112,12 +112,18 @@ Cross-cutting decisions: [0000](docs/adr/0000-requirements-and-capacity.md) requ
 
 ## Results
 
-The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, except the ADR 0000 rate rule for k6 throughput (within 0.1%, no dropped iteration, no failed request), so a missed target stays visible as missed. The machines are named in the setup note below.
+The lab measures **one instance per service** on one machine, with all containers sharing one Docker VM, and derives the fleet size from it. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, except the ADR 0000 rate rule for k6 throughput (within 0.1%, no dropped iteration, no failed request), so a missed target stays visible as missed. The machines are named in the setup note below.
 
 <details>
 <summary>Measurement setup</summary>
 
-[ADR 0000](docs/adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine; the raw files record only `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory, and (in `docs/load-output/*.env.json`) the containers running during each run. No raw file of the earlier runs (stage 7) records the laptop model. The Wave 3 drills (`replica-lag`, `kraft-quorum-loss`, and the 24 h `station-offline-replay` of 20261108T190213Z) ran on an Apple M4 Pro (12 CPUs, 24 GiB) with a Docker VM of 8 CPUs and 11.7 GiB, recorded in each `env.json`. They are not mixed into one series with the earlier runs. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from ADR 0000.
+[ADR 0000](docs/adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine. The raw files record two different setups, and they are not mixed into one series:
+
+- **k6 runs and benches of the earlier stages** (`docs/load-output/k6-*.env.json`): `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory (8,319,705,088 bytes), and the containers running during each run. None of these files records the laptop model, so which machine took them is not provable from the repository. `load/run.sh` now records it (`host.model`, `host.cpus`), but no k6 run has been repeated with it.
+- **23 drill runs** (every drill from `replica-lag` on: `replica-lag`, `kraft-quorum-loss`, the 24 h `station-offline-replay` of 20261108T190213Z, `consumer-rebalance`, `postgres-failover`, `backup-restore`, `reservation-invariant`): an Apple M4 Pro (Mac16,8; 12 CPUs, 24 GiB) with a Docker VM of 8 CPUs and 11.7 GiB (12,526,571,520 bytes), recorded in each `env.json`.
+- **14 older drill runs** (`gateway-instance-loss`, `kafka-broker-loss`, `reconnect-storm`, `slow-postgres`, `smart-charging-down` and the first two `station-offline-replay` runs) have no `env.json`; the machine is not recorded.
+
+The targets come from [`load/targets.json`](load/targets.json), which is transcribed from ADR 0000.
 
 </details>
 
@@ -202,17 +208,17 @@ The failure drills in [`drills/`](drills/) break one component while the simulat
 | `kafka-broker-loss-1` | one broker down | 1 of 2 | ✅ passed | [20261108T140530Z](docs/drills.md#kafka-broker-loss-1-20261108t140530z) |
 | `kafka-broker-loss-2` | two brokers down | 1 of 2 | ✅ passed | [20261108T140952Z](docs/drills.md#kafka-broker-loss-2-20261108t140952z) |
 | `kraft-quorum-loss` | lose the KRaft controller quorum (2 of 3 combined broker/controller nodes) under simulator load | 1 of 2 | ✅ passed | [20261108T185039Z](docs/drills.md#kraft-quorum-loss-20261108t185039z) |
-| `postgres-failover-auto-async-stall0` | no drill script | 1 of 1 | ✅ passed | [20261108T203614Z](docs/drills.md#postgres-failover-auto-async-stall0-20261108t203614z) |
-| `postgres-failover-auto-async-stall3` | no drill script | 0 of 2 | ❌ failed | [20261108T220826Z](docs/drills.md#postgres-failover-auto-async-stall3-20261108t220826z) |
-| `postgres-failover-auto-sync-stall0` | no drill script | 1 of 1 | ✅ passed | [20261108T204337Z](docs/drills.md#postgres-failover-auto-sync-stall0-20261108t204337z) |
-| `postgres-failover-auto-sync-stall3` | no drill script | 2 of 2 | ✅ passed | [20261108T221218Z](docs/drills.md#postgres-failover-auto-sync-stall3-20261108t221218z) |
-| `postgres-failover-manual-async-stall0` | no drill script | 1 of 1 | ✅ passed | [20261108T215357Z](docs/drills.md#postgres-failover-manual-async-stall0-20261108t215357z) |
+| `postgres-failover-auto-async-stall0` | lose the OLTP primary and fail over to the streaming replica | 1 of 1 | ✅ passed | [20261108T203614Z](docs/drills.md#postgres-failover-auto-async-stall0-20261108t203614z) |
+| `postgres-failover-auto-async-stall3` | lose the OLTP primary and fail over to the streaming replica | 0 of 2 | ❌ failed | [20261108T220826Z](docs/drills.md#postgres-failover-auto-async-stall3-20261108t220826z) |
+| `postgres-failover-auto-sync-stall0` | lose the OLTP primary and fail over to the streaming replica | 1 of 1 | ✅ passed | [20261108T204337Z](docs/drills.md#postgres-failover-auto-sync-stall0-20261108t204337z) |
+| `postgres-failover-auto-sync-stall3` | lose the OLTP primary and fail over to the streaming replica | 2 of 2 | ✅ passed | [20261108T221218Z](docs/drills.md#postgres-failover-auto-sync-stall3-20261108t221218z) |
+| `postgres-failover-manual-async-stall0` | lose the OLTP primary and fail over to the streaming replica | 1 of 1 | ✅ passed | [20261108T215357Z](docs/drills.md#postgres-failover-manual-async-stall0-20261108t215357z) |
 | `reconnect-storm` | whole fleet disconnects at once and reconnects per the ADR 0003 policy (first attempt U(0,10 s), then full-jitter backoff) | 1 of 1 | ✅ passed | [20261108T120311Z](docs/drills.md#reconnect-storm-20261108t120311z) |
 | `replica-lag` | the sessions read replica stops replaying WAL (pg_wal_replay_pause) | 1 of 3 | ✅ passed | [20261108T183638Z](docs/drills.md#replica-lag-20261108t183638z) |
-| `reservation-invariant-none` | no drill script | 1 of 1 | ✅ passed | [20261108T205643Z](docs/drills.md#reservation-invariant-none-20261108t205643z) |
-| `reservation-invariant-none-mutated` | no drill script | 2 of 2 | ✅ passed | [20261109T090303Z](docs/drills.md#reservation-invariant-none-mutated-20261109t090303z) |
-| `reservation-invariant-pause` | no drill script | 2 of 2 | ✅ passed | [20261109T090014Z](docs/drills.md#reservation-invariant-pause-20261109t090014z) |
-| `reservation-invariant-restart` | no drill script | 2 of 2 | ✅ passed | [20261109T090135Z](docs/drills.md#reservation-invariant-restart-20261109t090135z) |
+| `reservation-invariant-none` | the reservation invariant under faults, proved from an operation history | 1 of 1 | ✅ passed | [20261108T205643Z](docs/drills.md#reservation-invariant-none-20261108t205643z) |
+| `reservation-invariant-none-mutated` | the reservation invariant under faults, proved from an operation history | 2 of 2 | ✅ passed | [20261109T090303Z](docs/drills.md#reservation-invariant-none-mutated-20261109t090303z) |
+| `reservation-invariant-pause` | the reservation invariant under faults, proved from an operation history | 2 of 2 | ✅ passed | [20261109T090014Z](docs/drills.md#reservation-invariant-pause-20261109t090014z) |
+| `reservation-invariant-restart` | the reservation invariant under faults, proved from an operation history | 2 of 2 | ✅ passed | [20261109T090135Z](docs/drills.md#reservation-invariant-restart-20261109t090135z) |
 | `slow-postgres` | the telemetry Postgres becomes slow (CPU throttled to 0.05 cores) | 1 of 4 | ✅ passed | [20261108T162708Z](docs/drills.md#slow-postgres-20261108t162708z) |
 | `smart-charging-down` | the Go allocator is down | 1 of 1 | ✅ passed | [20261108T114310Z](docs/drills.md#smart-charging-down-20261108t114310z) |
 | `station-offline-replay` | stations lose their network for up to 24 h of simulated time while charging | 2 of 3 | ✅ passed | [20261108T190213Z](docs/drills.md#station-offline-replay-20261108t190213z) |
@@ -423,7 +429,7 @@ Every item below was found during this build by a code review, a load test or a 
 
 - **Found by:** reading the first run of `drills/station-offline-replay.sh`.
 - **Symptom:** `POST /offline` returned HTTP 400, so no station went offline, yet the drill passed. The run was deleted.
-- **Fix:** the drill now checks that the stations really went offline (`stations_taken_offline`) and that the connected count dropped (`connected_dropped_during_offline`). The valid rerun ([`station-offline-replay-20261108T141434Z`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json), passed, measured) simulated 10 minutes offline at time scale 1 with 20 stations: 31 s to drain the replay queues, 0 dropped queue entries, 0 of 1,272 probe readings missing, 0 duplicate rows, and 960 replayed rows flagged. The 24 h offline replay at time scale 60 ([`station-offline-replay-20261108T151006Z`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json), **FAILED** and **inconclusive**, kept with a [`NOTE.md`](docs/drill-output/station-offline-replay-20261108T151006Z/NOTE.md)) did not show a loss. The replay queue was still draining (140,564 messages at its peak, 89,114 when the 600 s wait ended), and then the harness restored the simulator before the queue had drained, which discarded the remaining in-memory queue and produced the 82,914 "missing" readings. That is a harness bug, and a rerun that waits for the queue to drain is still to do.
+- **Fix:** the drill now checks that the stations really went offline (`stations_taken_offline`) and that the connected count dropped (`connected_dropped_during_offline`). The valid rerun ([`station-offline-replay-20261108T141434Z`](docs/drill-output/station-offline-replay-20261108T141434Z/result.json), passed, measured) simulated 10 minutes offline at time scale 1 with 20 stations: 31 s to drain the replay queues, 0 dropped queue entries, 0 of 1,272 probe readings missing, 0 duplicate rows, and 960 replayed rows flagged. The 24 h offline replay at time scale 60 ([`station-offline-replay-20261108T151006Z`](docs/drill-output/station-offline-replay-20261108T151006Z/result.json), **FAILED** and **inconclusive**, kept with a [`NOTE.md`](docs/drill-output/station-offline-replay-20261108T151006Z/NOTE.md)) did not show a loss. The replay queue was still draining (140,564 messages at its peak, 89,114 when the 600 s wait ended), and then the harness restored the simulator before the queue had drained, which discarded the remaining in-memory queue and produced the 82,914 "missing" readings. That is a harness bug. The rerun that waits for the queue to drain ([`station-offline-replay-20261108T190213Z`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json), passed, measured) found 0 missing readings and 0 duplicates across 123,652 probe readings.
 
 </details>
 
@@ -507,17 +513,17 @@ Every item below was found during this build by a code review, a load test or a 
 
 **Other limits of the measurements**
 
-- Everything is single-instance on one laptop, and all containers share one Docker VM with the load generator (see the setup records, `docs/load-output/*.env.json`). Absolute numbers are not production numbers; they show where each design stands against its own target.
+- Everything is single-instance on one machine, and all containers share one Docker VM with the load generator (see the setup records: `docs/load-output/*.env.json` for k6, `docs/drill-output/*/env.json` for drills, and the setup note above for which machine and VM each series used). Absolute numbers are not production numbers; they show where each design stands against its own target.
 - The sessions sweep is not monotone: at 150 commands/s the StartTransaction p99 was 621.77 ms, above the script's 500 ms threshold, while 200 commands/s passed with 177.39 ms. Each point is one 60 s run, and the cause of the 150/s outlier was not isolated.
 - The smart-charging open-loop p99 of 19.45 ms ([`smart-charging-allocbench.json`](docs/load-output/smart-charging-allocbench.json), measured) is close to its 20 ms target.
 - Gaps in the evidence: no saved run measures the driver-api write p99 (target 800 ms), the telemetry visible-in-driver-api p99 (target 10 s), the remote-start SLOs or the invoice-after-session-end p99. Those targets in `load/targets.json` have no measurement behind them yet.
 - The full-fleet storage sizes are extrapolated from a 5,000-station, 7-day sample and are labelled derived. Compression and query numbers were measured with the background policy jobs paused and run manually (notes in `docs/load-output/telemetry-backfill-*.json`).
 - Drill results in the metrics table and the drill charts are regenerated from `docs/drill-output/`; a failed check appears as FAIL.
 - **Slow-Postgres:** the clean run (162708Z) passes (item 23), but it built no backlog (peak consumer lag 0). Earlier runs failed because of a coincident Kafka leader move (150304Z, with a pre-fault p99 rise that is not isolated) and an overloaded lab VM (160959Z), and are kept as evidence. A partition leader move still stalls the gateway's produces for about 1.3-1.9 s across the tuned runs (1.7 s at most with the shipped setting), a named limitation of `@platformatic/kafka` (ADR 0012).
-- **Lab VM limit:** three Kafka JVM brokers on one 8 GB Docker VM show 100-170% CPU per broker (observed, not saved as a file) even at low traffic once memory gets tight (GC). Rolling restarts recover them. Measurements taken in that state were discarded and rerun, so the saved runs should be read as taken on a healthy VM, not a tight one.
+- **Lab VM limit:** three Kafka JVM brokers on one 8 GB Docker VM (the VM of the earlier k6 runs) show 100-170% CPU per broker (observed, not saved as a file) even at low traffic once memory gets tight (GC). Rolling restarts recover them. Measurements taken in that state were discarded and rerun, so the saved runs should be read as taken on a healthy VM, not a tight one.
 - **Drills need a connected fleet:** every drill aborts through `require_fleet` unless all stations are connected, so a drill never reports on an empty fleet (item 20).
 - **Jaeger keeps at most 20000 traces** in memory (`mem_limit` 400m), so old traces disappear under load.
-- **24 h offline replay:** failed and inconclusive ([`station-offline-replay-20261108T151006Z`](docs/drill-output/station-offline-replay-20261108T151006Z/NOTE.md)). The 10-minute run at time scale 1 passed. In the 24 h run at time scale 60 the harness restored the simulator before the replay queue drained, so the result says nothing about loss; the rerun is still to do.
+- **24 h offline replay:** failed and inconclusive ([`station-offline-replay-20261108T151006Z`](docs/drill-output/station-offline-replay-20261108T151006Z/NOTE.md)). The 10-minute run at time scale 1 passed. In the 24 h run at time scale 60 the harness restored the simulator before the replay queue drained, so the result says nothing about loss. The rerun passed ([`station-offline-replay-20261108T190213Z`](docs/drill-output/station-offline-replay-20261108T190213Z/result.json): queues empty after 40 s, 0 dropped, 0 of 123,652 probe readings missing, 0 duplicate rows).
 - NOT_ENOUGH_REPLICAS cannot be provoked on the compose Kafka cluster, so that path is covered by a unit test with a failing producer ([gateway README](services/station-gateway/README.md)). The two-broker drill therefore uses produce errors and buffer growth as its evidence, not the literal error code.
 - The reconnect-storm drill disconnected 199 stations (`events.log` of the run; the default fleet has 200) and a warm Redis, not with the 833 connects/s of ADR 0003, and the billing service has no load measurement.
 
@@ -525,7 +531,7 @@ Every item below was found during this build by a code review, a load test or a 
 
 - **Service authentication:** a shared internal token instead of mTLS ([ADR 0010](docs/adr/0010-authentication.md)).
 - **Station security:** OCPP security profile 1 (Basic auth) instead of TLS client certificates ([ADR 0003](docs/adr/0003-ocpp-subset-station-auth-and-offline-replay.md)).
-- **Durability:** single-node Postgres, so RPO 0 holds for commits but not for node loss; production needs a synchronous standby ([ADR 0001](docs/adr/0001-architecture-overview.md)).
+- **Durability:** one primary with an asynchronous replica. The failover drills ([ADR 0018](docs/adr/0018-postgres-failover-and-backup-restore.md)) measured that an asynchronous replica loses acknowledged commits when the primary dies, so RPO 0 holds only with a synchronous standby, which production needs.
 - **Kafka:** combined broker and controller nodes; production would use dedicated controllers ([ADR 0012](docs/adr/0012-kafka-replication-and-producer-backpressure.md)).
 - **Simulator control API:** unauthenticated, bound to 127.0.0.1 only.
 - **PSP:** a mock. A real adapter must support idempotency keys and voiding by authorization key ([ADR 0007](docs/adr/0007-billing-saga-and-exactly-once-effect.md)).

@@ -12,7 +12,7 @@ checks, the action, and the drill in `drills/` that rehearses it. Raw drill outp
 | Only infra (for tests); stops the application containers first, then starts Postgres, Redis and Kafka | `make infra-up` |
 | Full local check (lint, types, build, unit + integration, Go vet/lint/race) | `make check` |
 | Stop and delete data | `make down` |
-| Service health | `curl localhost:<port>/health/ready` (ports in ADR 0001) |
+| Service health | `curl localhost:<port>/health/ready` (ports in ADR 0001). The application containers have no Docker healthcheck, so `docker compose ps` shows them as `Up`, not `healthy`; only the infrastructure containers report health. HAProxy checks the gateways' `/health/ready` itself. |
 | Simulator state | `curl 127.0.0.1:28089/status` |
 
 `make check` (through `make infra-up`) stops the application containers before the integration tests. After `make infra-up` or `make check`, run `docker compose up -d` to bring the application containers back. The tests share Redis
@@ -154,7 +154,7 @@ replay the queue in order with the original uniqueIds (ADR 0003). The drill take
 - Action: none by hand. A station whose queue never drains is retrying a message that keeps failing; look at the
   response for that uniqueId in the `sessions` logs. OCPP deduplication keys on uniqueId, action and payload hash.
 - Evidence: `docs/drill-output/station-offline-replay-20261108T141434Z/` passed (10 simulated minutes at time scale 1,
-  20 stations, 960 replayed rows flagged). The 24 h run at time scale 60 (`station-offline-replay-20261108T151006Z`) FAILED and is inconclusive: the harness restored the simulator before the replay queue drained, which discarded the queued readings (see its [`NOTE.md`](drill-output/station-offline-replay-20261108T151006Z/NOTE.md)). A rerun that waits for the queue to drain is still to do. The first run was invalid
+  20 stations, 960 replayed rows flagged). The 24 h run at time scale 60 (`station-offline-replay-20261108T151006Z`) FAILED and is inconclusive: the harness restored the simulator before the replay queue drained, which discarded the queued readings (see its [`NOTE.md`](drill-output/station-offline-replay-20261108T151006Z/NOTE.md)). The rerun that waits for the queue to drain (`station-offline-replay-20261108T190213Z`) passed: queues empty after 40 s, 0 dropped, 0 of 123,652 probe readings missing. The first run was invalid
   (`POST /offline` returned HTTP 400, so no station went offline, yet the drill passed). It was deleted, and the drill
   now checks that the stations went offline.
 
@@ -277,8 +277,8 @@ Use this to take the generator off the stack's machine (for example a MacBook Ai
 - **Service authentication:** a shared internal token between services instead of mTLS (ADR 0010).
 - **Station security:** OCPP security profile 1 (Basic auth) instead of TLS client certificates
   (ADR 0003).
-- **Durability:** single-node Postgres, so RPO 0 holds for commits but not for node loss. Production
-  needs a synchronous standby (ADR 0001).
+- **Durability:** one primary with an asynchronous replica: a primary failure can lose acknowledged commits (measured in ADR 0018), so RPO 0 holds only with a synchronous standby, which production
+  needs (ADR 0001, ADR 0018).
 - **Kafka:** combined broker/controller nodes; production would use dedicated controllers
   (ADR 0012).
 - **Simulator control API:** unauthenticated, and bound to 127.0.0.1 only.

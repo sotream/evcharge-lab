@@ -80,7 +80,13 @@ export function glanceMarkdown() {
 // "What it breaks": the first sentence of the comment header of drills/<script>.sh; for a numbered variant
 // (kafka-broker-loss-1) the header line that documents that argument.
 export function drillWhat(name) {
-  const base = runBase(name), script = exists(`drills/${base}.sh`) ? base : base.replace(/-\d+$/, ''), arg = base.slice(script.length + 1);
+  const base = runBase(name);
+  // The script is the longest prefix of the run name that has a drills/<prefix>.sh (a run named postgres-failover-auto-async-stall0
+  // belongs to postgres-failover.sh, kafka-broker-loss-1 to kafka-broker-loss.sh with argument 1).
+  let script = base;
+  while (script.includes('-') && !exists(`drills/${script}.sh`)) script = script.slice(0, script.lastIndexOf('-'));
+  if (!exists(`drills/${script}.sh`)) script = base;
+  const arg = base.slice(script.length + 1);
   const file = path.join(ROOT, `drills/${script}.sh`);
   if (!fs.existsSync(file)) return 'no drill script';
   const head = [];
