@@ -1,5 +1,8 @@
 # evcharge-lab: full stack. `docker compose up` starts infra, all services and the simulator.
 # Host ports are in the 23000-29999 range (ADR 0001, "Ports"). Internally every service listens on :8080.
+# Every published port is bound to ${BIND:-127.0.0.1}: the lab's default secrets (INTERNAL_TOKEN, STATION_SECRET_SEED,
+# JWT_SECRET, Postgres and Grafana passwords, Redis without a password) are only safe on loopback. To drive load from
+# another machine set BIND=0.0.0.0 and your own secrets (docs/runbook.md, "Running load from another machine").
 name: evcharge
 
 x-node-env: &common-env
@@ -55,7 +58,7 @@ services:
       - max_slot_wal_keep_size=2GB
       - -c
       - hba_file=/etc/postgresql/pg_hba.conf
-    ports: ["25432:5432"]
+    ports: ["${BIND:-127.0.0.1}:25432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
@@ -72,7 +75,7 @@ services:
     image: postgres:18.6-alpine
     user: postgres
     entrypoint: ["/bin/sh", "/replica-entrypoint.sh"]
-    ports: ["25434:5432"]
+    ports: ["${BIND:-127.0.0.1}:25434:5432"]
     volumes:
       - pgreplica:/var/lib/postgresql
       - ./infra/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
@@ -94,7 +97,7 @@ services:
       POSTGRES_PASSWORD: evcharge
       POSTGRES_DB: telemetry
     command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=512MB", "-c", "wal_compression=lz4", "-c", "max_wal_size=4GB", "-c", "checkpoint_timeout=15min"]
-    ports: ["25433:5432"]
+    ports: ["${BIND:-127.0.0.1}:25433:5432"]
     volumes:
       - pgtelemetry:/var/lib/postgresql
       - ./infra/postgres/init-telemetry.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
@@ -107,7 +110,7 @@ services:
   redis:
     image: redis:8.10.3-alpine
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
-    ports: ["26379:6379"]
+    ports: ["${BIND:-127.0.0.1}:26379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -137,7 +140,7 @@ services:
       KAFKA_NUM_PARTITIONS: 12
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
-    ports: ["29091:19091"]
+    ports: ["${BIND:-127.0.0.1}:29091:19091"]
     volumes: ["kafka1:/var/lib/kafka/data"]
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
@@ -169,7 +172,7 @@ services:
       KAFKA_NUM_PARTITIONS: 12
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
-    ports: ["29092:19092"]
+    ports: ["${BIND:-127.0.0.1}:29092:19092"]
     volumes: ["kafka2:/var/lib/kafka/data"]
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
@@ -201,7 +204,7 @@ services:
       KAFKA_NUM_PARTITIONS: 12
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
-    ports: ["29093:19093"]
+    ports: ["${BIND:-127.0.0.1}:29093:19093"]
     volumes: ["kafka3:/var/lib/kafka/data"]
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
@@ -226,12 +229,12 @@ services:
     command: ["--config", "/etc/jaeger/config.yaml"]
     volumes: ["./infra/jaeger/config.yaml:/etc/jaeger/config.yaml:ro"]
     mem_limit: 400m
-    ports: ["26686:16686", "24318:4318"]
+    ports: ["${BIND:-127.0.0.1}:26686:16686", "${BIND:-127.0.0.1}:24318:4318"]
 
   prometheus:
     image: prom/prometheus:v3.16.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=2d", "--web.enable-lifecycle"]
-    ports: ["29090:9090"]
+    ports: ["${BIND:-127.0.0.1}:29090:9090"]
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infra/prometheus/rules:/etc/prometheus/rules:ro
@@ -241,7 +244,7 @@ services:
     image: danielqsj/kafka-exporter:v1.11.0
     command: ["--kafka.server=kafka-1:9092", "--kafka.server=kafka-2:9092", "--kafka.server=kafka-3:9092"]
     mem_limit: 64m
-    ports: ["29308:9308"]
+    ports: ["${BIND:-127.0.0.1}:29308:9308"]
     depends_on:
       kafka-1: { condition: service_healthy }
 
@@ -250,7 +253,7 @@ services:
     environment:
       DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres:5432/evcharge?sslmode=disable
     mem_limit: 64m
-    ports: ["29187:9187"]
+    ports: ["${BIND:-127.0.0.1}:29187:9187"]
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -261,7 +264,7 @@ services:
     environment:
       DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres-replica:5432/evcharge?sslmode=disable
     mem_limit: 64m
-    ports: ["29189:9187"]
+    ports: ["${BIND:-127.0.0.1}:29189:9187"]
     depends_on:
       postgres-replica: { condition: service_healthy }
 
@@ -272,7 +275,7 @@ services:
     # Per-table collectors walk every hypertable chunk (hundreds) and timed out the scrape; database-level stats suffice.
     command: ["--no-collector.stat_user_tables", "--no-collector.statio_user_tables"]
     mem_limit: 128m
-    ports: ["29188:9187"]
+    ports: ["${BIND:-127.0.0.1}:29188:9187"]
     depends_on:
       postgres-telemetry: { condition: service_healthy }
 
@@ -281,7 +284,7 @@ services:
     environment:
       REDIS_ADDR: redis://redis:6379
     mem_limit: 64m
-    ports: ["29121:9121"]
+    ports: ["${BIND:-127.0.0.1}:29121:9121"]
     depends_on:
       redis: { condition: service_healthy }
 
@@ -291,7 +294,7 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-    ports: ["23000:3000"]
+    ports: ["${BIND:-127.0.0.1}:23000:3000"]
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -299,7 +302,7 @@ services:
   # ---------------------------------------------------------------- station edge
   station-lb:
     image: haproxy:3.4.7-alpine
-    ports: ["28080:8080", "28099:8404"]
+    ports: ["${BIND:-127.0.0.1}:28080:8080", "${BIND:-127.0.0.1}:28099:8404"]
     volumes: ["./infra/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
     depends_on: [station-gateway-1, station-gateway-2]
 
@@ -312,7 +315,7 @@ services:
       SERVICE_NAME: station-gateway
       GATEWAY_INSTANCE_ID: gw-1
       SESSIONS_URL: http://sessions:8080
-    ports: ["28087:8080"]
+    ports: ["${BIND:-127.0.0.1}:28087:8080"]
     stop_grace_period: 30s
 
   station-gateway-2:
@@ -322,7 +325,7 @@ services:
       SERVICE_NAME: station-gateway
       GATEWAY_INSTANCE_ID: gw-2
       SESSIONS_URL: http://sessions:8080
-    ports: ["28088:8080"]
+    ports: ["${BIND:-127.0.0.1}:28088:8080"]
 
   # ---------------------------------------------------------------- core services
   sessions:
@@ -339,7 +342,7 @@ services:
       SEED_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
       SEED_DC_SHARE: "0.2"
       ACCEPT_UNKNOWN_IDTAGS: "true"
-    ports: ["28081:8080"]
+    ports: ["${BIND:-127.0.0.1}:28081:8080"]
 
   smart-charging:
     restart: unless-stopped
@@ -354,7 +357,7 @@ services:
       HTTP_PORT: "8080"
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-    ports: ["28084:8080"]
+    ports: ["${BIND:-127.0.0.1}:28084:8080"]
 
   tariff:
     restart: unless-stopped
@@ -371,7 +374,7 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
       DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/tariff
-    ports: ["28085:8080"]
+    ports: ["${BIND:-127.0.0.1}:28085:8080"]
 
   billing:
     <<: *service
@@ -384,7 +387,7 @@ services:
       TARIFF_URL: http://tariff:8080
       # The simulator gives one in ten drivers this card, so the decline and compensation path runs in the lab.
       PSP_DECLINE_TOKENS: tok_decline
-    ports: ["28083:8080"]
+    ports: ["${BIND:-127.0.0.1}:28083:8080"]
 
   telemetry-ingest:
     <<: *service
@@ -409,7 +412,7 @@ services:
       KAFKA_BROKERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgres://evcharge:evcharge@postgres-telemetry:5432/telemetry
-    ports: ["28086:8080"]
+    ports: ["${BIND:-127.0.0.1}:28086:8080"]
 
   driver-api:
     <<: *service
@@ -432,7 +435,7 @@ services:
       TRUST_PROXY: "0"
       # scrypt runs on the libuv threadpool (default 4 threads): a burst of logins would queue behind it.
       UV_THREADPOOL_SIZE: "16"
-    ports: ["28082:8080"]
+    ports: ["${BIND:-127.0.0.1}:28082:8080"]
 
   # ---------------------------------------------------------------- traffic
   simulator:

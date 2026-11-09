@@ -251,11 +251,17 @@ for running a single service without building it.
 
 Use this to take the generator off the stack's machine (for example a MacBook Air M1 against the M4).
 
-- **Ports k6 needs.** Compose already publishes them on all interfaces, so nothing to change. One port per
-  script: 28081 sessions (`sessions-ocpp`, `reservation-contention`), 28082 driver-api (`driver-api-reads`),
-  28084 smart-charging, 28085 tariff, 28087 station-gateway-1 (`gateway-ws`).
-- **Do not expose** Postgres (25432, 25433), Redis (26379), Kafka (29091-29093) or Grafana (23000) to the
-  LAN, and do not forward any port on the router.
+- **Ports k6 needs.** Compose binds every published port to `127.0.0.1` by default, so the stack is invisible to
+  the LAN. For a remote run start it with `BIND=0.0.0.0 make up` (or `BIND=0.0.0.0 docker compose up -d`). That
+  opens ALL published ports, not just the k6 ones, and the lab defaults (internal token, station seed, JWT secret,
+  Postgres and Grafana passwords, Redis without a password) would then let anyone on the network act as a station
+  or a driver. So also set your own `INTERNAL_TOKEN`, `STATION_SECRET_SEED`, `JWT_SECRET` and `GRAFANA_ADMIN_PASSWORD`
+  in the environment, use a network you trust, do not forward any port on the router, and go back to the default
+  (`docker compose up -d`) when the run is over. One port per script: 28081 sessions (`sessions-ocpp`,
+  `reservation-contention`), 28082 driver-api (`driver-api-reads`), 28084 smart-charging, 28085 tariff, 28087
+  station-gateway-1 (`gateway-ws`).
+- **Never expose** Postgres (25432-25434), Redis (26379), Kafka (29091-29093) or Grafana (23000) beyond a
+  network you trust. Redis has no password and the Postgres password is `evcharge`.
 - **Firewall.** If the macOS firewall is on (System Settings > Network > Firewall), allow incoming
   connections for Docker. The script's preflight lists any port it cannot reach.
 - **Address of the stack's machine:** `ipconfig getifaddr en0` (Wi-Fi), or its `.local` name
