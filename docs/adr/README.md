@@ -25,3 +25,4 @@ MADR style. One decision per file; superseded ADRs stay with a pointer to the re
 | [0018](0018-postgres-failover-and-backup-restore.md) | Postgres failover, backup and restore: measured RTO and RPO, async against sync |
 | [0019](0019-invariant-checking-under-faults.md) | Reservation invariant checked from an operation history under faults, and what that does not prove |
 | [0020](0020-ci-on-github-actions.md) | CI on GitHub Actions, secret scan, image build check, Dependabot |
+| [0021](0021-accepted-limitations.md) | Accepted limitations from the November 2026 review |

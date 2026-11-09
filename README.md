@@ -37,7 +37,7 @@
 > **Status:** a learning and design lab, not a production system. Its known gaps are listed in [Known limits](#known-limits-and-production-gaps).
 
 <!-- stats:start -->
-| 7 services | 21 ADRs | 12 drill scripts | 19 of 20 drills pass on the latest run | 23 of 23 findings fixed |
+| 7 services | 22 ADRs | 12 drill scripts | 19 of 20 drills pass on the latest run | 23 of 23 findings fixed |
 |:---:|:---:|:---:|:---:|:---:|
 | [NestJS and Go, plus a station simulator](#the-system-design-question-each-service-answers) | [one decision per file](docs/adr/README.md) | [failure drills](#drills) | [12 failed runs kept as evidence](docs/drills.md) | [found by drills, k6 and reviews](#what-the-drills-and-reviews-caught) |
 <!-- stats:end -->
@@ -530,6 +530,7 @@ Every item below was found during this build by a code review, a load test or a 
 
 **Production gaps (lab simplifications, from the [runbook](docs/runbook.md) and the ADRs)**
 
+- **Accepted limitations from the November 2026 review** (login limiter, credential revocation delay, read-your-writes, billing currency, outbox ordering window, and others) are listed with their revisit conditions in [ADR 0021](docs/adr/0021-accepted-limitations.md).
 - **Service authentication:** a shared internal token instead of mTLS ([ADR 0010](docs/adr/0010-authentication.md)).
 - **Station security:** OCPP security profile 1 (Basic auth) instead of TLS client certificates ([ADR 0003](docs/adr/0003-ocpp-subset-station-auth-and-offline-replay.md)).
 - **Durability:** one primary with an asynchronous replica. The failover drills ([ADR 0018](docs/adr/0018-postgres-failover-and-backup-restore.md)) measured that an asynchronous replica loses acknowledged commits when the primary dies, so RPO 0 holds only with a synchronous standby, which production needs.
