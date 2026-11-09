@@ -585,4 +585,4 @@ This rewrites `docs/img/*.svg`, `docs/metrics.md`, `docs/drills.md` and the gene
 
 ## CI and license
 
-Pull requests run `make check`, a gitleaks scan of the full history and the image builds in GitHub Actions; drills and load tests stay local because their numbers belong to the measurement laptop ([ADR 0020](docs/adr/0020-ci-on-github-actions-and-image-publishing.md)). Images for `main` are on GHCR (see the [runbook](docs/runbook.md)). Licensed under the [MIT License](LICENSE).
+Pull requests run `make check`, a gitleaks scan of the full history and the image builds in GitHub Actions (no registry publishing); drills and load tests stay local because their numbers belong to the measurement laptop ([ADR 0020](docs/adr/0020-ci-on-github-actions.md)). Licensed under the [MIT License](LICENSE).

@@ -234,19 +234,6 @@ retries, or on a PSP idempotency mismatch (`billing_psp_idempotency_mismatch_tot
 the source offset and the consumer group. Fix the producer or the data, then republish the record
 to the source topic. Consumers are idempotent on `eventId`.
 
-## Pulling images from GHCR
-
-Every push to `main` publishes the seven service images and the simulator to GitHub Container Registry (ADR 0020).
-The names are public and lowercase: `ghcr.io/sotream/evcharge-lab-<name>` with `<name>` one of `station-gateway`, `sessions`,
-`smart-charging`, `tariff`, `billing`, `telemetry-ingest`, `driver-api`, `simulator`. Tags are the short commit SHA and `main`.
-
-```sh
-docker pull ghcr.io/sotream/evcharge-lab-sessions:main
-```
-
-`docker-compose.yml` still builds the images locally by default (`docker compose up -d --build`); the registry images are
-for running a single service without building it.
-
 ## Running load from another machine
 
 Use this to take the generator off the stack's machine (for example a MacBook Air M1 against the M4).
