@@ -1,0 +1,10 @@
+pg_basebackup: initiating base backup, waiting for checkpoint to complete
+pg_basebackup: checkpoint completed
+pg_basebackup: write-ahead log start point: 0/1B0000D8 on timeline 1
+pg_basebackup: starting background WAL receiver
+pg_basebackup: created temporary replication slot "pg_basebackup_10680"
+pg_basebackup: write-ahead log end point: 0/1B0001D0
+pg_basebackup: waiting for background process to finish streaming ...
+pg_basebackup: syncing data to disk ...
+pg_basebackup: renaming backup_manifest.tmp to backup_manifest
+pg_basebackup: base backup completed

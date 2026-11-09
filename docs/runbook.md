@@ -164,7 +164,60 @@ replay the queue in order with the original uniqueIds (ADR 0003). The drill take
   same uniqueId, and `sessions` is idempotent on it.
 - **Consumers:** they retry handler errors indefinitely, with no DLQ, so no events are lost.
 - **Billing:** sagas wait.
-- Action: restore Postgres. Everything resumes without manual replay.
+- Action: restore Postgres. Everything resumes without manual replay. If the primary is gone for good, see "OLTP Postgres failover" below: promote the replica (RPO is not 0 with the asynchronous replica, ADR 0018).
+
+### OLTP Postgres failover (`drills/postgres-failover.sh`)
+
+Run it from the repository root. It destroys the primary, so it ends by rebuilding the stack from empty volumes (at least 2 minutes: `down -v`, `up -d`, fleet reconnect, then a 120 s settle).
+
+```
+MODE=auto   SYNC=0 STALL_S=3 drills/postgres-failover.sh   # script promotes and repoints; async replication, replica cut off 3 s before the kill
+MODE=auto   SYNC=1 STALL_S=3 drills/postgres-failover.sh   # same with synchronous_standby_names = 'FIRST 1 (replica_1)'
+MODE=manual SYNC=0 STALL_S=0 drills/postgres-failover.sh   # you promote: the script prints four commands and waits
+```
+
+**How to read this output.** The run writes `docs/drill-output/postgres-failover-<mode>-<sync>-stall<N>-<stamp>/`. Start with `timeline.txt`, also printed at the end:
+
+- Rows are 2 s buckets relative to the kill (0 = the moment `docker kill` returned). `db-acks` is how many commits the database probe got acknowledged in the bucket (about 180 when healthy). `drv ok/rej/err` is what the reservation drivers saw: accepted / refused (409, normal under contention) / errors and timeouts.
+- Look for the **hole**: a bucket where `db-acks` drops to 0 is the write outage. In the sync run with a partition it starts before the kill, because the primary cannot commit without its standby. In the async run there is no hole before the kill and the acknowledgements in that stretch are the ones that get lost.
+- Look for `drv err` after the database is back: a column of errors with `db-acks` already healthy is the driver-api circuit breaker (opens after 5 failures, stays open 10 s).
+- The last lines give DB RTO, the longest write gap, driver RTO, acknowledged probe commits lost, and the error counts.
+
+**What a pass looks like.** `result.json` checks: `rto_db_write_s` and `rto_driver_reservation_s` at most 60 s (auto only; a manual run reports them without a threshold), `acknowledged_probe_writes_lost` = 0, `history_checker_violations` = 0 (the measured value is the checker's exit code: 0 pass, 1 violation, 2 bad input; the count is in `history/check-report.txt`; the checker is ADR 0019) and the fleet reconnected. In the lab an async run with `STALL_S=3` is **expected to fail** the two loss checks: that is the finding of ADR 0018. A sync run passes them.
+
+**Knobs.** `SYNC=1` turns on the synchronous standby (no loss, writes block while the standby is unreachable). `STALL_S` is how long the replica is cut off before the kill (0 = clean kill). `openMs` and `failureThreshold` of the driver-api breaker (`packages/platform/src/http-client/circuit-breaker.ts`) decide how long drivers keep seeing 503 after the database is back. `MANUAL_WAIT_S` is how long manual mode waits for you.
+
+**By hand, outside the drill.** If the primary is really gone: `docker compose exec postgres-replica psql -U evcharge -d postgres -c "select pg_promote()"`, then move the name `postgres` to the replica: `docker network disconnect <net> <replica-container>` and `docker network connect --alias postgres --alias postgres-replica <net> <replica-container>`. Services reconnect by themselves. There is no replica afterwards and nothing stops the old primary from coming back, so do not start it.
+
+### Backup and restore (`drills/backup-restore.sh`)
+
+Takes a physical backup of the whole instance with `pg_basebackup -X stream`, keeps the load running for 60 s, restores into a separate container on host port 25435, and checks the restored copy. The live stack is not touched. Raw output: `docs/drill-output/backup-restore-<stamp>/`.
+
+- **Read `summary.json`:** `backupMs`, `restoreTotalMs`, and `dataAgeS` (how much newer the source was than the restored copy at the disaster moment: the data a restore from this backup cannot bring back). `rowsLostPerTable` shows it in rows.
+- **What a pass looks like:** `restore_instance_ready` = 1 and the 9 integrity checks in `result.json` are 0 (`restored_counts_within_backup_window`, `reservation_overlaps_in_restored_db`, `invoices_total_differs_from_lines`, `sessions_with_more_than_one_invoice`, `invoices_minus_registry_rows`, `payments_amount_differs_from_invoice`, `payments_without_invoice`, `payments_minus_psp_captures_sum`, `sessions_stopped_before_started`) (each table's count lies between the source counts before and after the backup).
+- **Knob:** `BACKUP_DELAY_S` (how long the load runs after the backup, which sets the data age). To keep the restored container for inspection run with `KEEP=1`, then `psql -h localhost -p 25435 -U evcharge -d sessions`.
+- **Not covered:** point-in-time recovery. A base backup brings back the state at its end and nothing after; WAL archiving would be the next step.
+
+### Reservation invariant under faults (`drills/reservation-invariant.sh`)
+
+```
+FAULT=pause   drills/reservation-invariant.sh    # sessions frozen for PAUSE_S (default 15 s)
+FAULT=restart drills/reservation-invariant.sh    # sessions restarted
+MUTATE=1 FAULT=none drills/reservation-invariant.sh   # the protection is switched off: the checker MUST fail
+```
+
+- **Read `history/check-report.txt`.** The first line counts operations: acknowledged (accepted by the system), rejected (refused, normal), indeterminate (the client gave up; some of these did take effect, the report says how many were found in the database). Then `RESULT: PASS` or a list of violations: `acknowledged overlap` (two acknowledged reservations held one connector at the same time), `acknowledged reservation lost` (missing, on another connector, or its id was reissued to a different reservation) and `db-row overlap` (overlapping rows in the dump itself).
+- **What a pass looks like:** the normal runs end `PASS`; the `MUTATE=1` run passes only if the checker reports violations (`checker_detects_mutation` = 1) and the constraints were put back (`constraints_restored`).
+- **Knobs:** `DRIVERS`, the connector pool size (`CONNECTORS` of `load/history/generate.mjs`) and the think time set how hard the connectors are contended. `PAUSE_S` sets the freeze.
+- The checker is not a linearizability check. ADR 0019 lists what it does not prove.
+
+### Consumer group rebalance (`drills/consumer-rebalance.sh`)
+
+Starts a second telemetry-ingest instance (host port 28096), kills it with SIGKILL, restarts it, then stops the whole group, moves the committed offsets back by `REPLAY_SHIFT` (200) records per partition and starts it again. If the simulator does not already run with a 2 s meter interval it recreates it that way, and puts the default back at the end.
+
+- **Read `timings.json`:** `killToCoordinatorDropsMemberS` (about 45 s: the session timeout of the dead member, partitions idle meanwhile), `killToSurvivorOwnsAll24S`, `restartToTwoMembersOwnAll24S`, the lag peak and the time to drain. `group.jsonl` is the raw coordinator view (members and assigned partitions per poll). `summary.json` has the redelivery counts.
+- **What a pass looks like:** both rebalances within 60 s, 0 probe readings missing, 0 duplicate rows, and `forced_redelivery_records_suppressed` at least 1 (4,800 = 24 x `REPLAY_SHIFT` were observed in both runs: the unique index swallowed every duplicate). A kill alone usually redelivers nothing (offsets are committed after the flush), so that number is informational.
+- **Knob:** the consumer's session timeout decides the 45 s; `METER_INTERVAL_S` sets the volume.
 
 ### Billing saga parked
 
@@ -193,6 +246,31 @@ docker pull ghcr.io/sotream/evcharge-lab-sessions:main
 
 `docker-compose.yml` still builds the images locally by default (`docker compose up -d --build`); the registry images are
 for running a single service without building it.
+
+## Running load from another machine
+
+Use this to take the generator off the stack's machine (for example a MacBook Air M1 against the M4).
+
+- **Ports k6 needs.** Compose already publishes them on all interfaces, so nothing to change. One port per
+  script: 28081 sessions (`sessions-ocpp`, `reservation-contention`), 28082 driver-api (`driver-api-reads`),
+  28084 smart-charging, 28085 tariff, 28087 station-gateway-1 (`gateway-ws`).
+- **Do not expose** Postgres (25432, 25433), Redis (26379), Kafka (29091-29093) or Grafana (23000) to the
+  LAN, and do not forward any port on the router.
+- **Firewall.** If the macOS firewall is on (System Settings > Network > Firewall), allow incoming
+  connections for Docker. The script's preflight lists any port it cannot reach.
+- **Address of the stack's machine:** `ipconfig getifaddr en0` (Wi-Fi), or its `.local` name
+  (`scutil --get LocalHostName` plus `.local`). Prefer the IP when k6 runs in Docker.
+- **Run from the generator** (repo checkout, plus `k6` or Docker):
+
+  ```
+  TARGET=192.168.1.20 load/run-remote.sh tariff
+  ```
+
+  Extra arguments go to k6, for example `-e DURATION=30s`. An unreachable port exits 2 before k6 starts.
+- **Result:** `docs/load-output/remote/<name>-<UTC stamp>/` with the k6 summary JSON, `stdout.txt`, `ping.txt`
+  (round trip to the target) and `env.json` (`generator: "remote"`, generator hardware, k6 version, target).
+- These numbers include the network hop and a different generator. Never put them in the same chart series
+  as local runs (`docs/load-output/k6-*.json`).
 
 ## Known production gaps (lab simplifications)
 

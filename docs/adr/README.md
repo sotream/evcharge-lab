@@ -22,4 +22,6 @@ MADR style. One decision per file; superseded ADRs stay with a pointer to the re
 | [0015](0015-read-replica-and-read-your-writes-for-sessions.md) | Sessions read replica, read routing and read-your-writes by LSN |
 | [0016](0016-consensus-kraft-quorum.md) | Consensus: KRaft controller quorum, quorum maths, what quorum loss does |
 | [0017](0017-consistency-models.md) | Consistency models per piece of state, replication and partitioning |
+| [0018](0018-postgres-failover-and-backup-restore.md) | Postgres failover, backup and restore: measured RTO and RPO, async against sync |
+| [0019](0019-invariant-checking-under-faults.md) | Reservation invariant checked from an operation history under faults, and what that does not prove |
 | [0020](0020-ci-on-github-actions-and-image-publishing.md) | CI on GitHub Actions, secret scan, image publishing to GHCR, Dependabot |

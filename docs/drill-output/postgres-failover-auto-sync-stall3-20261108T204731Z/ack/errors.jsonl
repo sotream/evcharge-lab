@@ -1,0 +1,6 @@
+{"seq":2665,"atMs":1794170886598,"host":"postgres:5432","code":null,"message":"Query read timeout"}
+{"seq":2666,"atMs":1794170886702,"host":"postgres:5432","code":"ECONNREFUSED","message":"connect ECONNREFUSED 172.21.0.9:5432"}
+{"seq":2667,"atMs":1794170886807,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":2668,"atMs":1794170886911,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":2669,"atMs":1794170887016,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":2670,"atMs":1794170887120,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}

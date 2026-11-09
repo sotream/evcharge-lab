@@ -1,0 +1,22 @@
+2026-11-08T20:36:15Z replication mode: synchronous_standby_names='' synchronous_commit=on
+2026-11-08T20:36:16Z pg_stat_replication: replica_1 streaming async;
+2026-11-08T20:36:16Z sampler pid 95406
+2026-11-08T20:36:16Z workloads: DB ack probe pid 95411, reservation history generator pid 95412 (12 drivers)
+2026-11-08T20:36:46Z CHECK fleet_connected_before_kill measured=200 ge 200 pass=true
+2026-11-08T20:36:46Z CHECK probe_acks_before_kill measured=2688 ge 100 pass=true
+2026-11-08T20:36:46Z CHECK reserve_ok_before_kill measured=92 ge 1 pass=true
+2026-11-08T20:36:46Z PHASE during
+2026-11-08T20:36:46Z RUN docker kill <primary>
+2026-11-08T20:36:46Z primary dead (T_KILL=1794170206518)
+2026-11-08T20:36:46Z RUN pg_promote on the replica
+2026-11-08T20:36:46Z pg_promote returned t
+2026-11-08T20:36:46Z RUN repoint: docker network disconnect/connect --alias postgres <replica>
+2026-11-08T20:36:46Z PHASE after
+2026-11-08T20:36:57Z OK first accepted driver reservation after the kill after 11 s
+2026-11-08T20:37:58Z history checker exit code 0 (0 pass, 1 violation, 2 bad input); report in history/check-report.txt
+2026-11-08T20:37:58Z CHECK rto_db_write_s measured=0.456 le 60 pass=true
+2026-11-08T20:37:58Z CHECK rto_driver_reservation_s measured=10.27 le 60 pass=true
+2026-11-08T20:37:59Z CHECK acknowledged_probe_writes_lost measured=0 eq 0 pass=true
+2026-11-08T20:37:59Z CHECK history_checker_violations measured=0 eq 0 pass=true
+2026-11-08T20:37:59Z CHECK fleet_connected_after measured=200 ge 200 pass=true
+2026-11-08T20:38:00Z RESULT pass=true -> docs/drill-output/postgres-failover-auto-async-stall0-20261108T203614Z/result.json

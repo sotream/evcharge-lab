@@ -1,0 +1,38 @@
+{
+  "total": 1495,
+  "byOutcome": {
+    "rejected": 1143,
+    "ok": 178,
+    "error": 174
+  },
+  "byType": {
+    "reserve": 1366,
+    "cancel": 129
+  },
+  "connectors": [
+    {
+      "stationId": "st-0009-002",
+      "connectorId": 1
+    },
+    {
+      "stationId": "st-0009-002",
+      "connectorId": 2
+    },
+    {
+      "stationId": "st-0009-003",
+      "connectorId": 2
+    },
+    {
+      "stationId": "st-0009-004",
+      "connectorId": 1
+    },
+    {
+      "stationId": "st-0009-004",
+      "connectorId": 2
+    },
+    {
+      "stationId": "st-0009-005",
+      "connectorId": 1
+    }
+  ]
+}

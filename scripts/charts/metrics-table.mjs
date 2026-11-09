@@ -2,15 +2,17 @@
 import * as D from './data.mjs';
 
 const T = D.targets.perInstance;
-const link = (f) => `[\`${f.split('/').pop()}\`](${f})`;
+const link = (f, prefix = '') => `[\`${f.split('/').pop()}\`](${prefix}${f})`;
 const n = (v, u = '') => v === null || v === undefined ? 'no measurement' : `${Number(v.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 })}${u ? ' ' + u : ''}`;
 const verdict = (ok) => (ok ? 'met' : '**MISSED**');
 // Verdict computed from the numbers alone: no tolerance.
 const V = (value, op, target) => ({ pass: 'met', miss: '**MISSED**', none: 'no measurement' })[D.verdictOf(value, op, target)];
+// k6 throughput rows use the ADR 0000 rate rule (D.rateVerdict).
+const RV = (k, t) => (D.rateVerdict(k, t) === 'pass' && k.metric('http_reqs').rate < t ? 'met, rate rule' : V(k.metric('http_reqs').rate, 'ge', t));
 // k6 reports http_reqs.rate as count / test run duration; when that lands just under the target, say it is the duration.
 const durationNote = (k, target) => {
   const reqs = k.metric('http_reqs').count, secs = k.durationMs / 1000;
-  return `${n(reqs)} requests in ${secs.toFixed(4)} s. The target is ${n(target)} /s and the reported rate is ${n(k.metric('http_reqs').rate)} /s only because the run lasted slightly longer than 60 s, so the miss is a duration artefact and not a throughput shortfall. Derived: http_reqs.count / testRunDurationMs × 1000 (${n(reqs)} / ${secs.toFixed(4)} s = ${n(reqs / secs)}).`;
+  return `${n(reqs)} requests in ${secs.toFixed(4)} s. The target is ${n(target)} /s and the reported rate is ${n(k.metric('http_reqs').rate)} /s only because the run lasted slightly longer than 60 s, so the gap is a duration artefact and not a throughput shortfall; the row meets the target under the ADR 0000 rate rule. Derived: http_reqs.count / testRunDurationMs × 1000 (${n(reqs)} / ${secs.toFixed(4)} s = ${n(reqs / secs)}).`;
 };
 // Rows may carry a note; metricsMarkdown lists them under the table.
 
@@ -66,9 +68,9 @@ export function metricsRows() {
   for (const r of D.k6List(/^k6-sessions-ocpp-rate/).sort((a, b) => a.metric('http_reqs').rate - b.metric('http_reqs').rate)) {
     const st = r.metric('http_req_duration{op:start}')['p(99)'], sp = r.metric('http_req_duration{op:stop}')['p(99)'], lim = r.threshold('http_req_duration{op:start}', /p\(99\)/)?.limit;
     const isTarget = r.name.endsWith('rate200'), rate = r.metric('http_reqs').rate, dropped = r.metric('dropped_iterations').count, reqs = r.metric('http_reqs').count, secs = r.durationMs / 1000;
-    const miss = isTarget && D.verdictOf(rate, 'ge', T.sessions.commandsPerSec) === 'miss';
-    add(`Sessions: commands/s at ${r.name.replace('sessions-ocpp-rate', '')} offered (k6)`, isTarget ? `≥ ${n(T.sessions.commandsPerSec)}` : 'n/a', `${n(rate)}${isTarget ? ` (${V(rate, 'ge', T.sessions.commandsPerSec)})` : ''}; p99 start ${n(st, 'ms')}, stop ${n(sp, 'ms')} (script threshold < ${lim} ms: start ${verdict(st < lim)}, stop ${verdict(sp < lim)}); dropped ${dropped}`, 'measured', [r.file, r.envFile], undefined,
-      miss && dropped === 0 ? `${n(reqs)} requests in ${secs.toFixed(3)} s with ${dropped} dropped iterations: every offered request was sent. The rate is below ${T.sessions.commandsPerSec} only because k6 divides by the test run duration (${secs.toFixed(3)} s); it is a rounding artefact, not a throughput shortfall. Derived: http_reqs.count / testRunDurationMs × 1000.` : undefined);
+    const miss = isTarget && rate < T.sessions.commandsPerSec;
+    add(`Sessions: commands/s at ${r.name.replace('sessions-ocpp-rate', '')} offered (k6)`, isTarget ? `≥ ${n(T.sessions.commandsPerSec)}` : 'n/a', `${n(rate)}${isTarget ? ` (${RV(r, T.sessions.commandsPerSec)})` : ''}; p99 start ${n(st, 'ms')}, stop ${n(sp, 'ms')} (script threshold < ${lim} ms: start ${verdict(st < lim)}, stop ${verdict(sp < lim)}); dropped ${dropped}`, 'measured', [r.file, r.envFile], undefined,
+      miss && dropped === 0 ? `${n(reqs)} requests in ${secs.toFixed(3)} s with ${dropped} dropped iterations: every offered request was sent. The rate is below ${T.sessions.commandsPerSec} only because k6 divides by the test run duration (${secs.toFixed(3)} s); it is a rounding artefact, not a throughput shortfall, and the row meets the target under the ADR 0000 rate rule. Derived: http_reqs.count / testRunDurationMs × 1000.` : undefined);
   }
   const ar = D.tool('sessions-allocation-rounds.json');
   if (ar) add(`Sessions: one allocation round for ${n(ar.data.measured.sites)} sites, ${n(ar.data.measured.activeSessions)} active sessions (${ar.data.measured.instances} instances, concurrency ${ar.data.measured.concurrencyPerInstance} each)`, `≤ ${ar.data.budgetSeconds} s`, `${n(ar.data.measured.elapsedSeconds, 's')} (${verdict(ar.data.measured.elapsedSeconds <= ar.data.budgetSeconds)}; ${n(ar.data.measured.roundsPerSecond)} rounds/s, ${n(ar.data.measured.setChargingProfileCommands)} SetChargingProfile commands). Setup recorded in the file: ${ar.data.note}`, 'measured', [ar.file]);
@@ -86,12 +88,12 @@ export function metricsRows() {
     add('Smart charging: server-side invariant violations', `${D.targets.slo.siteCapExceededSamples}`, `${ab.data.serverMetrics.invariant_violations_total} over ${ab.data.serverMetrics.allocations_total_ok} allocations`, 'measured', [ab.file]);
   }
   const sk = D.k6('smart-charging');
-  if (sk) add('Smart charging: k6 against the service', `≥ ${n(T['smart-charging'].allocationsPerSec)} /s, p99 ≤ ${n(T['smart-charging'].p99Ms, 'ms')}`, `${n(sk.metric('http_reqs').rate)} /s (${V(sk.metric('http_reqs').rate, 'ge', T['smart-charging'].allocationsPerSec)}), p99 ${n(sk.metric('http_req_duration')['p(99)'], 'ms')} (${V(sk.metric('http_req_duration')['p(99)'], 'le', T['smart-charging'].p99Ms)})`, 'measured', [sk.file, sk.envFile], undefined, D.verdictOf(sk.metric('http_reqs').rate, 'ge', T['smart-charging'].allocationsPerSec) === 'miss' ? durationNote(sk, T['smart-charging'].allocationsPerSec) : undefined);
+  if (sk) add('Smart charging: k6 against the service', `≥ ${n(T['smart-charging'].allocationsPerSec)} /s, p99 ≤ ${n(T['smart-charging'].p99Ms, 'ms')}`, `${n(sk.metric('http_reqs').rate)} /s (${RV(sk, T['smart-charging'].allocationsPerSec)}), p99 ${n(sk.metric('http_req_duration')['p(99)'], 'ms')} (${V(sk.metric('http_req_duration')['p(99)'], 'le', T['smart-charging'].p99Ms)})`, 'measured', [sk.file, sk.envFile], undefined, sk.metric('http_reqs').rate < T['smart-charging'].allocationsPerSec ? durationNote(sk, T['smart-charging'].allocationsPerSec) : undefined);
 
   // tariff
   for (const f of D.toolGlob(/^tariff-quotebench/)) for (const r of f.data.results) add(`Tariff: ${r.mode === 'openloop' ? `open loop at ${n(r.offeredRatePerSecond)} quotes/s` : `closed loop, concurrency ${r.concurrency}`}`, `≥ ${n(T.tariff.calculationsPerSec)} /s, p99 ≤ ${n(T.tariff.p99Ms, 'ms')}`, `${n(r.quotesPerSecond)} /s, p99 ${n(r.latencyMs.p99, 'ms')} (${verdict(r.pass)})`, 'measured', [f.file]);
   const tk = D.k6('tariff');
-  if (tk) add('Tariff: k6 against the service', `≥ ${n(T.tariff.calculationsPerSec)} /s, p99 ≤ ${n(T.tariff.p99Ms, 'ms')}`, `${n(tk.metric('http_reqs').rate)} /s (${V(tk.metric('http_reqs').rate, 'ge', T.tariff.calculationsPerSec)}), p99 ${n(tk.metric('http_req_duration')['p(99)'], 'ms')} (${V(tk.metric('http_req_duration')['p(99)'], 'le', T.tariff.p99Ms)})`, 'measured', [tk.file, tk.envFile], undefined, D.verdictOf(tk.metric('http_reqs').rate, 'ge', T.tariff.calculationsPerSec) === 'miss' ? durationNote(tk, T.tariff.calculationsPerSec) : undefined);
+  if (tk) add('Tariff: k6 against the service', `≥ ${n(T.tariff.calculationsPerSec)} /s, p99 ≤ ${n(T.tariff.p99Ms, 'ms')}`, `${n(tk.metric('http_reqs').rate)} /s (${RV(tk, T.tariff.calculationsPerSec)}), p99 ${n(tk.metric('http_req_duration')['p(99)'], 'ms')} (${V(tk.metric('http_req_duration')['p(99)'], 'le', T.tariff.p99Ms)})`, 'measured', [tk.file, tk.envFile], undefined, tk.metric('http_reqs').rate < T.tariff.calculationsPerSec ? durationNote(tk, T.tariff.calculationsPerSec) : undefined);
 
   // driver-api
   const dr = D.k6('driver-api-reads');
@@ -99,8 +101,8 @@ export function metricsRows() {
     const v = dr.metric('http_reqs').rate, o = dr.metric('http_req_duration{scenario:open}');
     const iters = dr.metric('iterations').count, dropped = dr.metric('dropped_iterations').count, reqs = dr.metric('http_reqs').count;
     const scenarioS = (iters + dropped) / T['driver-api'].readRps, th = dr.threshold('dropped_iterations', /rate</);
-    add('Driver API: read requests/s (GET /v1/sites, k6)', `≥ ${n(T['driver-api'].readRps)}`, `${n(v)} (${V(v, 'ge', T['driver-api'].readRps)}); ${dropped} of ${iters + dropped} iterations dropped`, 'measured', [dr.file, dr.envFile], undefined,
-      `The reported rate is http_reqs.count / test run duration, and http_reqs also counts ${n(reqs - iters)} setup requests (register and login). The scenario itself completed ${n(iters)} iterations in ${n(scenarioS, 's')}, about ${n(iters / scenarioS)} per second (derived: iterations / ((iterations + dropped_iterations) / ${n(T['driver-api'].readRps)} per second)), and ${n(dropped)} iterations were dropped. The k6 script's own threshold on dropped_iterations (${th ? th.expr : 'none recorded'}, ${th ? (th.ok ? 'held' : 'failed') : 'n/a'}) is a 1% tolerance set in the script; ADR 0000 does not allow it, so the row counts as missed.`);
+    add('Driver API: read requests/s (GET /v1/sites, k6)', `≥ ${n(T['driver-api'].readRps)}`, `${n(v)} (${RV(dr, T['driver-api'].readRps)}); ${dropped} of ${iters + dropped} iterations dropped`, 'measured', [dr.file, dr.envFile], undefined,
+      `The reported rate is http_reqs.count / test run duration, and http_reqs also counts ${n(reqs - iters)} setup requests (register and login). The scenario itself completed ${n(iters)} iterations in ${n(scenarioS, 's')}, about ${n(iters / scenarioS)} per second (derived: iterations / ((iterations + dropped_iterations) / ${n(T['driver-api'].readRps)} per second)), and ${n(dropped)} iterations were dropped. The k6 script's own threshold on dropped_iterations (${th ? th.expr : 'none recorded'}, ${th ? (th.ok ? 'held' : 'failed') : 'n/a'}) is a 1% tolerance set in the script; the ADR 0000 rate rule allows no dropped iterations, so the row counts as missed.`);
     add('Driver API: read p99', `≤ ${n(T['driver-api'].readP99Ms, 'ms')}`, `${n(o['p(99)'], 'ms')} (${V(o['p(99)'], 'le', T['driver-api'].readP99Ms)})`, 'measured', [dr.file, dr.envFile]);
   }
 
@@ -124,10 +126,11 @@ export function metricsRows() {
   return rows;
 }
 
-export function metricsMarkdown() {
+// prefix: path from the file that holds the table to the repo root ('../' for docs/metrics.md).
+export function metricsMarkdown(prefix = '') {
   const rows = metricsRows();
   const head = '| Metric | Target | Value | Label | Source file | Formula |\n|---|---|---|---|---|---|\n';
-  const body = rows.map((r) => `| ${r.metric} | ${r.target} | ${r.value} | ${r.label} | ${r.sources.filter(Boolean).map(link).join(', ')} | ${r.formula ? `\`${r.formula}\`` : ''} |`).join('\n');
+  const body = rows.map((r) => `| ${r.metric} | ${r.target} | ${r.value} | ${r.label} | ${r.sources.filter(Boolean).map((f) => link(f, prefix)).join(', ')} | ${r.formula ? `\`${r.formula}\`` : ''} |`).join('\n');
   const nt = rows.filter((r) => r.note).map((r) => `- **${r.metric}:** ${r.note}`).join('\n');
   return head + body + '\n' + (nt ? `\nNotes on individual rows:\n\n${nt}\n` : '');
 }

@@ -23,7 +23,7 @@ SELECT pg_create_physical_replication_slot('$SLOT') WHERE NOT EXISTS (SELECT 1 F
 SQL
   mkdir -p "$PGDATA"
   chmod 700 "$PGDATA"
-  pg_basebackup -d "host=$PRIMARY port=5432 user=replicator password=replicator" -D "$PGDATA" -R -X stream -S "$SLOT" -c fast
+  pg_basebackup -d "host=$PRIMARY port=5432 user=replicator password=replicator application_name=$SLOT" -D "$PGDATA" -R -X stream -S "$SLOT" -c fast
 fi
 
 # max_connections must be at least the primary's value (400) for a hot standby.

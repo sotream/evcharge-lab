@@ -64,7 +64,7 @@ Every later ADR picks technologies and topologies. Those choices are only defens
 | Billing | exactly-once effect: 0 lost, 0 double charges; invoice p99 < 5 min after session end |
 | Smart charging | the site power cap is never exceeded by allocation; reallocation after session start/stop p99 < 5 s; a new session starts at a safe minimum profile until allocated |
 | Degradation | if the allocation service is down, gateway applies a static safe share (cap / connectors); charging never stops because the backend is down |
-| Durability | RPO 0 for sessions and billing (synchronous commit); RPO ≤ 5 min for telemetry |
+| Durability | RPO 0 for sessions and billing (synchronous commit); RPO ≤ 5 min for telemetry. **Amended by ADR 0018:** RPO 0 holds on one node (argued, not re-measured) and across node loss only with a synchronous standby; with the lab's asynchronous replica it is missed (281 and 282 acknowledged writes lost in two runs when the replica was unreachable for 3 s before the primary died). |
 
 ## Lab targets (one instance, MacBook Air M1, docker compose)
 
@@ -78,6 +78,8 @@ The full fleet cannot run on one laptop. We measure one instance per service and
 | Smart charging (Go) | ≥ 1,000 site allocations/s, p99 < 20 ms | 115/s | 2 | target; derived |
 | Tariffs (Go) | ≥ 2,000 calculations/s, p99 < 20 ms | 100/s | 2 | target; derived |
 | Driver API | ≥ 1,000 RPS reads at p99 < 300 ms | 500 RPS | 2 | target; derived |
+
+Rate rule (amended 2026-11-09): k6 reports `http_reqs.rate` as the request count divided by the whole test run duration, start-up and shutdown included, so a constant-arrival-rate run offered at exactly the target reports a rate a fraction below it (for example 199.99/s against 200/s). A throughput target measured this way is met when the run dropped no iteration, no request failed and the reported rate is at least 99.9% of the target. Every other target, including every latency, loss and drill check, is compared with no tolerance. A run that dropped iterations misses its throughput target whatever the rate.
 
 README charts show target vs `[measured]` per service. A target that was missed stays in the table as missed, with the bottleneck named.
 

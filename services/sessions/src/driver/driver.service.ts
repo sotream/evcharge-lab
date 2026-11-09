@@ -136,6 +136,10 @@ export class DriverService {
     try {
       const r = await withIdempotency(this.pool, req, async (c) => {
         const ctx = await this.connectorCtx(c, driverId, body.stationId, body.connectorId);
+        // Concurrent INSERTs into the exclusion-constrained table deadlock each other: every inserter finds the others'
+        // uncommitted rows and waits for them (40P01 after deadlock_timeout, 1 s, and the waiters hold pool connections).
+        // One transaction per connector at a time removes the cycle; the constraint stays as the backstop (ADR 0005).
+        await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`reservation:${ctx.connector_pk}`]);
         const commandId = randomUUID();
         let row: ReservationRow;
         try {

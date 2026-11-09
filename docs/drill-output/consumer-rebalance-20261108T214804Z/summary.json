@@ -1,0 +1,78 @@
+{
+  "groupMembersAssignedTimeline": [
+    {
+      "t": "2026-11-08T21:48:06.579Z",
+      "msAfterKill": -52882,
+      "s": "3m/24p"
+    },
+    {
+      "t": "2026-11-08T21:48:12.230Z",
+      "msAfterKill": -47231,
+      "s": "2m/24p"
+    },
+    {
+      "t": "2026-11-08T21:49:44.300Z",
+      "msAfterKill": 44839,
+      "s": "1m/12p"
+    },
+    {
+      "t": "2026-11-08T21:49:45.386Z",
+      "msAfterKill": 45925,
+      "s": "1m/24p"
+    },
+    {
+      "t": "2026-11-08T21:50:32.249Z",
+      "msAfterKill": 92788,
+      "s": "2m/24p"
+    },
+    {
+      "t": "2026-11-08T21:51:37.393Z",
+      "msAfterKill": 157932,
+      "s": "1m/24p"
+    },
+    {
+      "t": "2026-11-08T21:51:41.367Z",
+      "msAfterKill": 161906,
+      "s": "0m/0p"
+    },
+    {
+      "t": "2026-11-08T21:51:57.699Z",
+      "msAfterKill": 178238,
+      "s": "2m/12p"
+    },
+    {
+      "t": "2026-11-08T21:51:59.209Z",
+      "msAfterKill": 179748,
+      "s": "2m/24p"
+    }
+  ],
+  "survivorFirstGainsPartitionsS": 47.204,
+  "survivorReports24PartitionsS": null,
+  "survivorPartitionsAfterKill": [
+    12,
+    23
+  ],
+  "lagPeakRecords": 426,
+  "lagPeakAt": "2026-11-08T21:48:10.580Z",
+  "lagBeforeMaxRecords": 426,
+  "dedupSuppressedRedeliveries": {
+    "instance1": 0,
+    "instance2BeforeKill": 0,
+    "instance2AfterRestart": 0
+  },
+  "rowsInsertedByInstance": {
+    "instance1": 632,
+    "instance2BeforeKill": 773,
+    "instance2AfterRestart": 209
+  },
+  "rebalanceDropsInstance1": 0,
+  "meterReadingsRowsBefore": 47614,
+  "meterReadingsRowsAfter": 52020,
+  "forcedRedelivery": {
+    "shiftPerPartition": null,
+    "suppressed": 4800,
+    "newRowsInserted": 841,
+    "rowsBefore": 50998,
+    "rowsAfter": 52006
+  }
+}

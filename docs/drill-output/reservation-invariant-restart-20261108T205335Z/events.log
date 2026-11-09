@@ -1,0 +1,15 @@
+2026-11-08T20:53:36Z exclusion constraints on reservation partitions: 5
+2026-11-08T20:53:36Z sampler pid 97451
+2026-11-08T20:53:36Z history generator pid 97455 (12 drivers)
+2026-11-08T20:53:56Z PHASE during
+2026-11-08T20:53:56Z RUN docker restart sessions
+2026-11-08T20:53:58Z fault window ended after 2 s
+2026-11-08T20:53:58Z PHASE after
+2026-11-08T20:54:09Z OK first accepted reservation after the fault after 11 s
+2026-11-08T20:54:51Z checker: ops 1065, reserves 834 (acknowledged 153, rejected 581, indeterminate 100, of which found in DB 0), accepted cancels 153, DB rows 393
+2026-11-08T20:54:51Z checker: informational overlaps (not violations): 0
+2026-11-08T20:54:51Z checker: RESULT: PASS
+2026-11-08T20:54:51Z CHECK reserve_ok_before_fault measured=57 ge 1 pass=true
+2026-11-08T20:54:51Z CHECK recovered_within_s measured=11 le 60 pass=true
+2026-11-08T20:54:51Z CHECK history_checker_violations measured=0 eq 0 pass=true
+2026-11-08T20:54:51Z RESULT pass=true -> docs/drill-output/reservation-invariant-restart-20261108T205335Z/result.json

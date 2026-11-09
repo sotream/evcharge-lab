@@ -1,7 +1,7 @@
 /* oxlint-disable no-await-in-loop */ // sequential awaits are intentional here (ordering, retries, backoff)
 import type { Logger } from '../logging/logger';
 import type { HealthRegistry } from '../health/health';
-import { errorMessage, sleep, withTimeout } from '../util';
+import { errorMessage, sleep } from '../util';
 
 export interface ShutdownHook {
   name: string;
@@ -84,6 +84,8 @@ export class Lifecycle {
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), graceMs);
     timer.unref();
+    const deadlineHit = new Promise<never>((_, reject) => deadline.signal.addEventListener('abort', () => reject(new Error('shutdown deadline exceeded')), { once: true }));
+    deadlineHit.catch(() => {}); // rejected only when the deadline fires; never an unhandled rejection
     health.setDraining(true);
     logger.info({ reason, drainDelayMs, graceMs }, 'draining');
 
@@ -95,9 +97,11 @@ export class Lifecycle {
       await sleep(Math.min(drainDelayMs, graceMs), deadline.signal);
       for (const step of steps) {
         if (deadline.signal.aborted) break;
-        const remaining = Math.max(1, graceMs - (Date.now() - t0));
         try {
-          await withTimeout(Promise.resolve().then(step.run), remaining, `shutdown hook ${step.name}`);
+          // Raced against the overall deadline itself, not against a second timer of the remaining time: two timers due
+          // within a millisecond of each other can fire in either order, and when the step timer won, the loop saw no
+          // abort yet and ran the next hook after the deadline.
+          await Promise.race([Promise.resolve().then(step.run), deadlineHit]);
           logger.debug({ hook: step.name }, 'shutdown hook done');
         } catch (err) {
           failed.push(step.name);

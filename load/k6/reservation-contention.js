@@ -1,6 +1,6 @@
 // N drivers reserve the SAME connector at the same instant (ADR 0005): exactly one 201, the rest 409.
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 import { internalHeaders, uuid, summary } from './lib.js';
 
@@ -22,13 +22,31 @@ export function setup() {
     const r = http.post(`${URL}/internal/drivers`, JSON.stringify({ driverId, idTag }), { headers: { ...internalHeaders, 'idempotency-key': driverId } });
     if (r.status < 300) drivers.push(driverId);
   }
-  // A distinct free connector per run: station st-0020-0xx connector 1, picked by the run timestamp.
-  return { drivers, stationId: `st-0020-${String(1 + (Math.floor(Date.now() / 1000) % 10)).padStart(3, '0')}`, connectorId: 1 };
+  // A free connector: probe candidates with the first driver, release the probe at once. The simulator also uses these
+  // connectors, so a fixed or time-derived pick lands on a held one and the run proves nothing (0 x 201, N x 409).
+  const probe = (stationId, connectorId) => http.post(`${URL}/v1/reservations`, JSON.stringify({ stationId, connectorId }),
+    { headers: { ...internalHeaders, 'x-driver-id': drivers[0], 'idempotency-key': uuid() }, responseCallback: http.expectedStatuses(201, 409) });
+  for (let s = 1; s <= 10; s++) {
+    for (let c = 1; c <= 2; c++) {
+      const stationId = `st-0020-${String(s).padStart(3, '0')}`;
+      const r = probe(stationId, c);
+      if (r.status !== 201) continue;
+      http.del(`${URL}/v1/reservations/${r.json('reservationId')}`, null, { headers: { ...internalHeaders, 'x-driver-id': drivers[0] } });
+      return { drivers, stationId, connectorId: c };
+    }
+  }
+  throw new Error('no free connector among st-0020-001..010 connectors 1-2');
 }
 export default function (d) {
   const res = http.post(`${URL}/v1/reservations`, JSON.stringify({ stationId: d.stationId, connectorId: d.connectorId }),
     { headers: { ...internalHeaders, 'x-driver-id': d.drivers[(__VU - 1) % d.drivers.length], 'idempotency-key': uuid() }, responseCallback: http.expectedStatuses(201, 409) });
-  if (res.status === 201) won.add(1);
+  if (res.status === 201) {
+    won.add(1);
+    // The winner releases the connector so the next run can use it, but only after the whole burst is over: releasing at once
+    // frees the connector in the middle of the burst and lets a later request win.
+    sleep(3);
+    http.del(`${URL}/v1/reservations/${res.json('reservationId')}`, null, { headers: { ...internalHeaders, 'x-driver-id': d.drivers[(__VU - 1) % d.drivers.length] } });
+  }
   else if (res.status === 409) lost.add(1);
   check(res, { '201 or 409': (r) => r.status === 201 || r.status === 409 });
 }

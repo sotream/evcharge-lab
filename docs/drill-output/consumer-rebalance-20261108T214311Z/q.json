@@ -1,0 +1,7 @@
+{
+  "sim_connected": "sum(sim_connected_stations)",
+  "group_lag_total": "sum(kafka_consumergroup_lag{consumergroup=\"telemetry-ingest.meter-values\"})",
+  "group_members": "max(kafka_consumergroup_members{consumergroup=\"telemetry-ingest.meter-values\"})",
+  "meter_values_in_per_s": "sum(rate(ocpp_messages_total{direction=\"in\",type=\"call\",action=\"MeterValues\"}[10s]))",
+  "ingest_lag_p99_s": "histogram_quantile(0.99, sum by (le) (rate(telemetry_ingest_lag_seconds_bucket[30s])))"
+}
