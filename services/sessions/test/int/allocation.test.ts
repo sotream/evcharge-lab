@@ -228,10 +228,8 @@ describe('allocation orchestration (ADR 0006)', () => {
     });
     expect(row.requested).not.toBeNull();
     expect(row.due_in).toBeLessThanOrEqual(5.5);
-    const before = (h.sessionEvents.filter((e) => e.type === 'site.power-allocated')).length;
     const round = await waitFor(() => rounds().find((r) => r.data.allocations.some((a) => a.sessionId === s.sessionId)), { timeoutMs: 20_000 });
     expect(round).toBeDefined();
-    expect(before).toBeGreaterThanOrEqual(0);
     spy.mockRestore();
   });
 });
