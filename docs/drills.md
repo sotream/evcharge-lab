@@ -92,7 +92,7 @@ Result: ✅ passed. Files: [result.json](drill-output/kraft-quorum-loss-20261108
 
 ## postgres-failover-auto-async-stall0
 
-no drill script. 1 of 1 runs passed.
+lose the OLTP primary and fail over to the streaming replica. 1 of 1 runs passed.
 
 ### postgres-failover-auto-async-stall0-20261108T203614Z
 
@@ -102,7 +102,7 @@ Result: ✅ passed. Files: [result.json](drill-output/postgres-failover-auto-asy
 
 ## postgres-failover-auto-async-stall3
 
-no drill script. 0 of 2 runs passed.
+lose the OLTP primary and fail over to the streaming replica. 0 of 2 runs passed.
 
 ### postgres-failover-auto-async-stall3-20261108T204000Z
 
@@ -118,7 +118,7 @@ Result: ❌ failed; failed checks: `acknowledged_probe_writes_lost`, `history_ch
 
 ## postgres-failover-auto-sync-stall0
 
-no drill script. 1 of 1 runs passed.
+lose the OLTP primary and fail over to the streaming replica. 1 of 1 runs passed.
 
 ### postgres-failover-auto-sync-stall0-20261108T204337Z
 
@@ -128,7 +128,7 @@ Result: ✅ passed. Files: [result.json](drill-output/postgres-failover-auto-syn
 
 ## postgres-failover-auto-sync-stall3
 
-no drill script. 2 of 2 runs passed.
+lose the OLTP primary and fail over to the streaming replica. 2 of 2 runs passed.
 
 ### postgres-failover-auto-sync-stall3-20261108T204731Z
 
@@ -144,7 +144,7 @@ Result: ✅ passed. Files: [result.json](drill-output/postgres-failover-auto-syn
 
 ## postgres-failover-manual-async-stall0
 
-no drill script. 1 of 1 runs passed.
+lose the OLTP primary and fail over to the streaming replica. 1 of 1 runs passed.
 
 ### postgres-failover-manual-async-stall0-20261108T215357Z
 
@@ -186,7 +186,7 @@ Result: ✅ passed. Files: [result.json](drill-output/replica-lag-20261108T18363
 
 ## reservation-invariant-none
 
-no drill script. 1 of 1 runs passed.
+the reservation invariant under faults, proved from an operation history. 1 of 1 runs passed.
 
 ### reservation-invariant-none-20261108T205643Z
 
@@ -196,7 +196,7 @@ Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-none
 
 ## reservation-invariant-none-mutated
 
-no drill script. 2 of 2 runs passed.
+the reservation invariant under faults, proved from an operation history. 2 of 2 runs passed.
 
 ### reservation-invariant-none-mutated-20261108T205511Z
 
@@ -212,7 +212,7 @@ Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-none
 
 ## reservation-invariant-pause
 
-no drill script. 2 of 2 runs passed.
+the reservation invariant under faults, proved from an operation history. 2 of 2 runs passed.
 
 ### reservation-invariant-pause-20261108T205154Z
 
@@ -228,7 +228,7 @@ Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-paus
 
 ## reservation-invariant-restart
 
-no drill script. 2 of 2 runs passed.
+the reservation invariant under faults, proved from an operation history. 2 of 2 runs passed.
 
 ### reservation-invariant-restart-20261108T205335Z
 
