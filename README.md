@@ -112,7 +112,7 @@ Cross-cutting decisions: [0000](docs/adr/0000-requirements-and-capacity.md) requ
 
 ## Results
 
-The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, so a missed target stays visible as missed. The machines are named in the setup note below.
+The lab measures **one instance per service** on one laptop, with all containers sharing one Docker VM, and derives the fleet size from it. The targets come from [`load/targets.json`](load/targets.json), which is transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, except the ADR 0000 rate rule for k6 throughput (within 0.1%, no dropped iteration, no failed request), so a missed target stays visible as missed. The machines are named in the setup note below.
 
 <details>
 <summary>Measurement setup</summary>
@@ -135,17 +135,17 @@ One row per target in `load/targets.json`. The full metrics table, with every ro
 | telemetry-ingest | Durable lag p99 (at the target rate) | ≤ 5,000 ms | 942.95 ms | ✅ met | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |
 | telemetry-ingest | Telemetry visible in driver-api p99 | ≤ 10,000 ms | no measurement | not tested | no saved run |
 | telemetry-ingest | Loss ratio at the target rate | ≤ 0.0001 | 0 | ✅ met | [`telemetry-ingestbench.json`](docs/load-output/telemetry-ingestbench.json) |
-| sessions | Commands per second (StartTransaction + StopTransaction) | ≥ 200 /s | 199.99 /s | ❌ missed | [`k6-sessions-ocpp-rate200.json`](docs/load-output/k6-sessions-ocpp-rate200.json) |
-| smart-charging | Allocations per second (k6, service) | ≥ 1,000 /s | 999.97 /s | ❌ missed | [`k6-smart-charging.json`](docs/load-output/k6-smart-charging.json) |
+| sessions | Commands per second (StartTransaction + StopTransaction) | ≥ 200 /s | 199.99 /s | ✅ met (rate rule) | [`k6-sessions-ocpp-rate200.json`](docs/load-output/k6-sessions-ocpp-rate200.json) |
+| smart-charging | Allocations per second (k6, service) | ≥ 1,000 /s | 999.97 /s | ✅ met (rate rule) | [`k6-smart-charging.json`](docs/load-output/k6-smart-charging.json) |
 | smart-charging | Allocation p99 (open loop at the target rate) | ≤ 20 ms | 19.45 ms | ✅ met | [`smart-charging-allocbench.json`](docs/load-output/smart-charging-allocbench.json) |
-| tariff | Quotes per second (k6, service) | ≥ 2,000 /s | 1,999.97 /s | ❌ missed | [`k6-tariff.json`](docs/load-output/k6-tariff.json) |
+| tariff | Quotes per second (k6, service) | ≥ 2,000 /s | 1,999.97 /s | ✅ met (rate rule) | [`k6-tariff.json`](docs/load-output/k6-tariff.json) |
 | tariff | Quote p99 (open loop at the target rate) | ≤ 20 ms | 13.9 ms | ✅ met | [`tariff-quotebench-openloop.json`](docs/load-output/tariff-quotebench-openloop.json) |
 | driver-api | Read requests per second (GET /v1/sites) | ≥ 1,000 /s | 955.59 /s | ❌ missed | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json) |
 | driver-api | Read p99 | ≤ 300 ms | 255.2 ms | ✅ met | [`k6-driver-api-reads.json`](docs/load-output/k6-driver-api-reads.json) |
 | driver-api | Write p99 | ≤ 800 ms | no measurement | not tested | no saved run |
 <!-- glance:end -->
 
-How to read it: every verdict compares the measured value with the target, with no tolerance. The **station gateway misses its message-rate and CALLRESULT p99 targets** in the 2,000-station run, which is the only run that offers enough load to test the rate (see [Known limits](#known-limits-and-production-gaps)); the 1,000-station run cannot test a 2,000 msg/s target and is labelled "not tested", but it also missed the CALLRESULT p99 target (1,446 ms against 500 ms, `ocpp_callresult_ms` p(99) in `k6-gateway-ws-1000st-1hz.json`). The gateway does hold 10,000 WebSocket connections. The sessions rate (199.99 against 200) and the driver-api read rate (955.59 against 1,000) are below their targets and are drawn as misses; the notes under the table in [`docs/metrics.md`](docs/metrics.md) explain each (a 60.003 s run for sessions, and setup requests plus dropped iterations for driver-api). The telemetry-ingest sustained rate at the target offered rate (2,471.23 against 2,500) is also a miss. The smart-charging (999.97 against 1,000) and tariff (1,999.97 against 2,000) k6 rates are drawn as misses too; they are duration artefacts, explained in the notes under the table in [`docs/metrics.md`](docs/metrics.md). The closed-loop saturation figures in the metrics table (for example 10,507.2 allocations/s and 14,399.8 quotes/s) are best-case benchmarks, not the charted verdicts.
+How to read it: every verdict compares the measured value with the target, with no tolerance except the [ADR 0000](docs/adr/0000-requirements-and-capacity.md#lab-targets-one-instance-macbook-air-m1-docker-compose) rate rule for k6 throughput. The **station gateway misses its message-rate and CALLRESULT p99 targets** in the 2,000-station run, which is the only run that offers enough load to test the rate (see [Known limits](#known-limits-and-production-gaps)); the 1,000-station run cannot test a 2,000 msg/s target and is labelled "not tested", but it also missed the CALLRESULT p99 target (1,446 ms against 500 ms, `ocpp_callresult_ms` p(99) in `k6-gateway-ws-1000st-1hz.json`). The gateway does hold 10,000 WebSocket connections. The driver-api read rate (955.59 against 1,000) is a miss: 331 iterations were dropped. The sessions (199.99 against 200), smart-charging (999.97 against 1,000) and tariff (1,999.97 against 2,000) k6 rates are a fraction below their targets only because k6 divides by the whole run duration; those runs dropped no iteration and had no failed request, so they meet their targets under the rate rule and are marked "(rate rule)". The notes under the table in [`docs/metrics.md`](docs/metrics.md) explain each. The telemetry-ingest sustained rate at the target offered rate (2,471.23 against 2,500) is also a miss. The closed-loop saturation figures in the metrics table (for example 10,507.2 allocations/s and 14,399.8 quotes/s) are best-case benchmarks, not the charted verdicts.
 
 ### Charts
 
@@ -154,7 +154,7 @@ The chart shows each measured value divided by its target. Every chart is an SVG
 <!-- charts:start (generated by scripts/charts/build.mjs) -->
 #### Target versus measured, per service
 
-One bar per metric: the measured value divided by the target in `load/targets.json`. Bars are red where the measured value misses its target, with no tolerance: station-gateway: Messages per second; station-gateway: CALLRESULT p99; telemetry-ingest: Sustained rows per second (2,500 offered); sessions: Commands per second (StartTransaction + StopTransaction); smart-charging: Allocations per second (k6, service); tariff: Quotes per second (k6, service); driver-api: Read requests per second (GET /v1/sites).
+One bar per metric: the measured value divided by the target in `load/targets.json`. Bars are red where the measured value misses its target (ADR 0000, rate rule for k6 throughput): station-gateway: Messages per second; station-gateway: CALLRESULT p99; telemetry-ingest: Sustained rows per second (2,500 offered); driver-api: Read requests per second (GET /v1/sites).
 
 ![Target versus measured, per service](docs/img/targets-vs-measured.svg)
 

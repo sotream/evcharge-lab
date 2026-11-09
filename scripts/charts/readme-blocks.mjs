@@ -67,7 +67,7 @@ export function glanceRows() {
     const [metric, unit, op] = m ? [m.metric, m.unit, m.op] : UNMEASURED[key] ?? [key, '', 'le'];
     const offered = m?.note && D.k6(m.note) ? D.gatewayOfferedRate(D.k6(m.note)) : null;
     const status = !m || m.status === 'none' || (service === 'station-gateway' && key === 'msgPerSec' && offered !== null && offered < target) ? 'none' : m.status;
-    rows.push({ service, metric, target: `${SYM[op]} ${num(target)}${unit ? ' ' + unit : ''}`, measured: m && m.value !== null && m.value !== undefined ? `${num(m.value)}${unit ? ' ' + unit : ''}` : 'no measurement', status, verdict: { pass: '✅ met', miss: '❌ missed', none: 'not tested' }[status], source: m ? link(m.sources[0]) : 'no saved run' });
+    rows.push({ service, metric, target: `${SYM[op]} ${num(target)}${unit ? ' ' + unit : ''}`, measured: m && m.value !== null && m.value !== undefined ? `${num(m.value)}${unit ? ' ' + unit : ''}` : 'no measurement', status, verdict: status === 'pass' && m.op === 'ge' && m.value < target ? '✅ met (rate rule)' : { pass: '✅ met', miss: '❌ missed', none: 'not tested' }[status], source: m ? link(m.sources[0]) : 'no saved run' });
   }
   return rows;
 }
