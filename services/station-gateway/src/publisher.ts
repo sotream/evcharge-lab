@@ -20,6 +20,9 @@ export const defaultTopics = (): GatewayTopics => ({
   rawLog: Topics.OcppRawLog,
 });
 
+/** Longest raw-log frame kept in full, in characters. */
+const RAW_FRAME_MAX_CHARS = 4096;
+
 /** The bounded produce buffer is full: answer the CALL with InternalError (ADR 0012). */
 export class BufferFullError extends Error {
   override readonly name = 'BufferFullError';
@@ -103,7 +106,9 @@ export class EventPublisher {
       return;
     }
     this.rawInFlight++;
-    const value = JSON.stringify({ stationId, gatewayInstance: this.opts.instance, direction, at: new Date().toISOString(), frame });
+    // Frames up to 64 KB were copied whole; with rawCapacity of them in flight that is hundreds of MB. Keep the head only.
+    const truncated = frame.length > RAW_FRAME_MAX_CHARS;
+    const value = JSON.stringify({ stationId, gatewayInstance: this.opts.instance, direction, at: new Date().toISOString(), frame: truncated ? frame.slice(0, RAW_FRAME_MAX_CHARS) : frame, ...(truncated ? { truncated: true, originalChars: frame.length } : {}) });
     this.rawProducer
       .send([{ topic: this.opts.topics.rawLog, key: stationId, value }])
       .catch(() => metrics.rawLogDropped.inc({ reason: 'broker_error' }))
