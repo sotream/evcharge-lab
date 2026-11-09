@@ -16,6 +16,8 @@ const durationNote = (k, target) => {
   const reqs = k.metric('http_reqs').count, secs = k.durationMs / 1000;
   return `${n(reqs)} requests in ${secs.toFixed(4)} s. The target is ${n(target)} /s and the reported rate is ${n(k.metric('http_reqs').rate)} /s only because the run lasted slightly longer than 60 s, so the gap is a duration artefact and not a throughput shortfall; the row meets the target under the ADR 0000 rate rule. Derived: http_reqs.count / testRunDurationMs × 1000 (${n(reqs)} / ${secs.toFixed(4)} s = ${n(reqs / secs)}).`;
 };
+// A k6 summary metric value, whether the export nests it under `values` or not.
+const val = (m, k) => m?.values?.[k] ?? m?.[k];
 // Rows may carry a note; metricsMarkdown lists them under the table.
 
 
@@ -87,7 +89,6 @@ export function metricsRows() {
     const base = path.join(D.ROOT, 'docs/load-output', dir);
     const runs = fs.readdirSync(base).filter((f) => /^run-\d+\.json$/.test(f)).map((f) => JSON.parse(fs.readFileSync(path.join(base, f), 'utf8')).metrics);
     if (!runs.length) continue;
-    const val = (m, k) => m?.values?.[k] ?? m?.[k];
     const valid = runs.filter((m) => val(m.reservation_won, 'count') === 1 && val(m.reservation_conflict, 'count') === 49).length;
     const slow = runs.map((m) => val(m.http_req_duration, 'max')).filter((v) => Number.isFinite(v));
     const dl = Number(fs.readFileSync(path.join(base, 'deadlocks.txt'), 'utf8').match(/after=(\d+)/)?.[1] ?? NaN);
