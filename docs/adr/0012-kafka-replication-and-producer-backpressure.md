@@ -33,9 +33,12 @@ predictably, and must not corrupt data or silently drop it.
     2026-11-08): during a partition leader move its produces hung for the full 30 s and held CALLRESULTs
     (docs/drill-output/slow-postgres-20261108T150304Z/NOTE.md). After 3 s the station gets CALLERROR and retries the
     same uniqueId, which is idempotent downstream.
-- **Consumers.** Offsets are committed after processing (ADR 0002). Group rebalancing uses the
-  `cooperative-sticky` assignor (franz-go and `@platformatic/kafka` both support incremental
-  rebalancing), so a broker or consumer restart does not stop the world for the group.
+- **Consumers.** Offsets are committed after processing (ADR 0002). The Go consumer (telemetry-ingest, franz-go)
+  uses the `cooperative-sticky` balancer (`pipeline.go`). The TypeScript consumers (`@platformatic/kafka`, version
+  2.15.0 in the lockfile) pass no `protocols`, so they use the library default `roundrobin`, an eager assignor
+  that revokes every partition on each rebalance (correction, November 2026 review: this ADR claimed
+  cooperative-sticky for both). The effect is a group-wide pause during a rebalance, not a correctness problem:
+  offsets are committed only after processing and handlers are idempotent.
 
 ### Failure behaviour
 

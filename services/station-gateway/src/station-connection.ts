@@ -47,6 +47,7 @@ export class StationConnection {
   alive = true;
   closed = false;
   readonly channel: CommandChannel;
+  private inflightCalls = 0;
 
   constructor(
     readonly stationId: string,
@@ -102,7 +103,14 @@ export class StationConnection {
     switch (frame.kind) {
       case 'call':
         this.ctx.metrics.messages.inc({ direction: 'in', type: 'call', action: knownAction(frame.action) });
-        void this.handleCall(frame.uniqueId, frame.action, frame.payload);
+        // A station replays one CALL at a time, so a station with many unanswered CALLs is faulty or hostile. Every
+        // unanswered CALL holds a slot of the shared produce buffer; cap them so one socket cannot starve the rest.
+        if (this.inflightCalls >= MAX_INFLIGHT_CALLS) {
+          this.sendError(frame.uniqueId, 'InternalError', `more than ${MAX_INFLIGHT_CALLS} unanswered CALLs, retry later`, knownAction(frame.action));
+          return;
+        }
+        this.inflightCalls++;
+        void this.handleCall(frame.uniqueId, frame.action, frame.payload).finally(() => this.inflightCalls--);
         return;
       case 'result':
         this.ctx.metrics.messages.inc({ direction: 'in', type: 'result', action: '' });
@@ -308,6 +316,12 @@ export class StationConnection {
 
   private write(text: string, type: string, action: string): void {
     if (this.ws.readyState !== WebSocket.OPEN) return;
+    // A peer that does not read its socket would make the process buffer everything we write to it.
+    if (this.ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+      this.ctx.logger.warn({ stationId: this.stationId, bufferedBytes: this.ws.bufferedAmount }, 'station does not read its socket; closing it');
+      this.ws.terminate();
+      return;
+    }
     this.ws.send(text);
     this.ctx.metrics.messages.inc({ direction: 'out', type, action });
     this.ctx.publisher.rawLog(this.stationId, 'out', text);
@@ -315,6 +329,10 @@ export class StationConnection {
 }
 
 const IN_FLIGHT_RETRY_MS = 200;
+/** Unanswered station CALLs per socket (ADR 0003: a station sends one at a time; headroom for heartbeat and status). */
+const MAX_INFLIGHT_CALLS = 16;
+/** Unsent bytes on one station socket before it is closed. */
+const MAX_BUFFERED_BYTES = 1024 * 1024;
 
 /** 4xx that will never succeed on retry. 408, 409 and 429 are transient and stay InternalError. */
 const isPermanentClientError = (err: unknown): boolean => err instanceof HttpError && err.status >= 400 && err.status < 500 && ![408, 409, 429].includes(err.status);
