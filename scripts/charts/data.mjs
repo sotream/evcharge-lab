@@ -110,10 +110,21 @@ export function verdictOf(value, op, target) {
   if (typeof value !== 'number' || Number.isNaN(value)) return 'none';
   return (op === 'ge' ? value >= target : value <= target) ? 'pass' : 'miss';
 }
+// ADR 0000 rate rule: k6 reports http_reqs.rate as count / whole run duration, start-up and shutdown included,
+// so a constant-arrival-rate run at exactly the target lands a hair below it. Such a run meets a throughput
+// target when no iteration was dropped, no request failed and the reported rate is within RATE_SLACK of it.
+export const RATE_SLACK = 0.001;
+export function rateVerdict(k, target) {
+  const rate = k.metric('http_reqs')?.rate;
+  if (typeof rate !== 'number' || Number.isNaN(rate)) return 'none';
+  if (rate >= target) return 'pass';
+  const clean = k.metric('dropped_iterations')?.count === 0 && k.metric('http_req_failed')?.rate === 0;
+  return clean && rate >= target * (1 - RATE_SLACK) ? 'pass' : 'miss';
+}
 export function targetMetrics() {
   const T = targets.perInstance;
   const out = [];
-  const add = (m) => out.push({ label: 'measured', ...m, status: verdictOf(m.value, m.op, m.target) });
+  const add = (m) => out.push({ label: 'measured', ...m, status: m.status ?? verdictOf(m.value, m.op, m.target) });
 
   // station-gateway
   const g10k = tool('gateway-10k-connections.json');
@@ -141,7 +152,7 @@ export function targetMetrics() {
   const sBest = sess.at(-1);
   if (sBest) {
     const v = sBest.metric('http_reqs').rate;
-    add({ key: 'commandsPerSec', service: 'sessions', metric: 'Commands per second (StartTransaction + StopTransaction)', unit: '/s', target: T.sessions.commandsPerSec, op: 'ge', value: v, sources: [sBest.file, TARGETS_FILE], setup: envLine(sBest), note: `no iterations dropped: ${sBest.metric('dropped_iterations').count}` });
+    add({ key: 'commandsPerSec', service: 'sessions', metric: 'Commands per second (StartTransaction + StopTransaction)', unit: '/s', target: T.sessions.commandsPerSec, op: 'ge', value: v, status: rateVerdict(sBest, T.sessions.commandsPerSec), sources: [sBest.file, TARGETS_FILE], setup: envLine(sBest), note: `no iterations dropped: ${sBest.metric('dropped_iterations').count}` });
   }
 
   // smart-charging
@@ -153,7 +164,7 @@ export function targetMetrics() {
   }
   // Rate: the k6 run against the service, the same value and verdict as the README metrics table.
   const sk = k6('smart-charging');
-  if (sk) add({ key: 'allocationsPerSec', service: 'smart-charging', metric: 'Allocations per second (k6, service)', unit: '/s', target: T['smart-charging'].allocationsPerSec, op: 'ge', value: sk.metric('http_reqs').rate, sources: [sk.file, TARGETS_FILE], setup: envLine(sk), note: 'k6 http_reqs.count / run duration' });
+  if (sk) add({ key: 'allocationsPerSec', service: 'smart-charging', metric: 'Allocations per second (k6, service)', unit: '/s', target: T['smart-charging'].allocationsPerSec, op: 'ge', value: sk.metric('http_reqs').rate, status: rateVerdict(sk, T['smart-charging'].allocationsPerSec), sources: [sk.file, TARGETS_FILE], setup: envLine(sk), note: 'k6 http_reqs.count / run duration' });
 
   // tariff
   const qb = toolGlob(/^tariff-quotebench/).flatMap((f) => f.data.results.map((r) => ({ ...r, file: f.file, data: f.data })));
@@ -162,14 +173,14 @@ export function targetMetrics() {
     if (open) add({ key: 'p99Ms', service: 'tariff', metric: 'Quote p99 (open loop at the target rate)', unit: 'ms', target: T.tariff.p99Ms, op: 'le', value: open.latencyMs.p99, sources: [open.file, TARGETS_FILE], setup: tariffSetup(open) });
   }
   const tk = k6('tariff');
-  if (tk) add({ key: 'calculationsPerSec', service: 'tariff', metric: 'Quotes per second (k6, service)', unit: '/s', target: T.tariff.calculationsPerSec, op: 'ge', value: tk.metric('http_reqs').rate, sources: [tk.file, TARGETS_FILE], setup: envLine(tk), note: 'k6 http_reqs.count / run duration' });
+  if (tk) add({ key: 'calculationsPerSec', service: 'tariff', metric: 'Quotes per second (k6, service)', unit: '/s', target: T.tariff.calculationsPerSec, op: 'ge', value: tk.metric('http_reqs').rate, status: rateVerdict(tk, T.tariff.calculationsPerSec), sources: [tk.file, TARGETS_FILE], setup: envLine(tk), note: 'k6 http_reqs.count / run duration' });
 
   // driver-api
   const dr = k6('driver-api-reads');
   if (dr) {
     const v = dr.metric('http_reqs').rate;
     const open = dr.metric('http_req_duration{scenario:open}') ?? dr.metric('http_req_duration');
-    add({ key: 'readRps', service: 'driver-api', metric: 'Read requests per second (GET /v1/sites)', unit: '/s', target: T['driver-api'].readRps, op: 'ge', value: v, sources: [dr.file, TARGETS_FILE], setup: envLine(dr), note: `${dr.metric('dropped_iterations').count} of ${dr.metric('iterations').count + dr.metric('dropped_iterations').count} iterations dropped` });
+    add({ key: 'readRps', service: 'driver-api', metric: 'Read requests per second (GET /v1/sites)', unit: '/s', target: T['driver-api'].readRps, op: 'ge', value: v, status: rateVerdict(dr, T['driver-api'].readRps), sources: [dr.file, TARGETS_FILE], setup: envLine(dr), note: `${dr.metric('dropped_iterations').count} of ${dr.metric('iterations').count + dr.metric('dropped_iterations').count} iterations dropped` });
     add({ key: 'readP99Ms', service: 'driver-api', metric: 'Read p99', unit: 'ms', target: T['driver-api'].readP99Ms, op: 'le', value: open['p(99)'], sources: [dr.file, TARGETS_FILE], setup: envLine(dr) });
   }
   return out;

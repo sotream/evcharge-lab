@@ -50,3 +50,12 @@ test('generated README blocks are not stale', () => {
   assert.equal(block('findings'), findingsTable(README));
   assert.equal(fs.readFileSync(path.join(D.ROOT, 'docs/drills.md'), 'utf8'), drillsPage());
 });
+
+const run = (rate, dropped, failed) => ({ metric: (k) => ({ http_reqs: { rate }, dropped_iterations: { count: dropped }, http_req_failed: { rate: failed } })[k] });
+test('rate rule: a clean k6 run within 0.1% of the target meets it, a run with drops does not', () => {
+  assert.equal(D.rateVerdict(run(199.99, 0, 0), 200), 'pass');
+  assert.equal(D.rateVerdict(run(199.7, 0, 0), 200), 'miss');
+  assert.equal(D.rateVerdict(run(199.99, 1, 0), 200), 'miss');
+  assert.equal(D.rateVerdict(run(199.99, 0, 0.01), 200), 'miss');
+  assert.equal(D.rateVerdict(run(200, 5, 0), 200), 'pass');
+});

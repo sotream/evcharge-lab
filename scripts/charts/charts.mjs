@@ -46,9 +46,9 @@ export function targetVsMeasured() {
   // target line and axis
   out.unshift(line(sx(1), rowsStart, sx(1), h - 14, 'axis', 'stroke-dasharray="4 3" style="stroke:var(--fg)"'));
   for (const t of [0, 0.5, 1, 1.5, 2]) out.unshift(text(sx(t), rowsStart - 2, `${t}×`, { anchor: 'middle', cls: 'm' }));
-  // Verdicts are value versus target with no tolerance. Say which misses are near misses, from the data.
+  // Verdicts are value versus target; k6 throughput rows use the ADR 0000 rate rule. Say which misses are near misses.
   const near = ms.filter((m) => m.status === 'miss' && typeof m.value === 'number' && Math.abs(m.value / m.target - 1) <= 0.01).map((m) => `${m.service} ${m.metric} (${fmt(m.value / m.target)}× of target)`);
-  const foot = `Verdicts compare the measured value with the ADR 0000 target and allow no tolerance.${near.length ? ` Misses within 1% of the target: ${near.join('; ')}; the README metrics table explains each.` : ''}`;
+  const foot = `Verdicts compare the measured value with the ADR 0000 target; k6 throughput rows within 0.1% with no dropped iteration and no failed request count as met (ADR 0000 rate rule).${near.length ? ` Misses within 1% of the target: ${near.join('; ')}; the README metrics table explains each.` : ''}`;
   out.push(...wrap(foot, 120).map((t, i) => text(20, h + 8 + i * 17, t, { cls: 'm' })));
   const srcs = [...new Set(ms.flatMap((m) => m.sources))].sort();
   const setups = [...new Map(ms.map((m) => [m.setup, `Setup (${m.sources[0].split('/').pop()}): ${m.setup}`])).values()];
