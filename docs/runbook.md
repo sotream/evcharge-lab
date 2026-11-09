@@ -246,7 +246,6 @@ docker pull ghcr.io/sotream/evcharge-lab-sessions:main
 
 `docker-compose.yml` still builds the images locally by default (`docker compose up -d --build`); the registry images are
 for running a single service without building it.
-=======
 
 ## Running load from another machine
 
