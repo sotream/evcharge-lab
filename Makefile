@@ -40,7 +40,7 @@ test-unit:
 	pnpm test:unit
 
 charts-test:
-	node --test scripts/charts/
+	node --test scripts/charts/*.test.mjs
 
 # Integration tests share Redis and Kafka with the compose stack; running app containers would claim the
 # same station routes, so they are stopped first (infra keeps running).
@@ -66,7 +66,7 @@ test-int: infra-up
 	pnpm test:int
 
 history-test:
-	node --test load/history/
+	node --test load/history/*.test.mjs
 
 go-check: infra-up
 	@for m in $(GO_MODULES); do \

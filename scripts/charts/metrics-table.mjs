@@ -1,4 +1,6 @@
 // Markdown metrics table for the README, generated from the raw files (never typed by hand).
+import fs from 'node:fs';
+import path from 'node:path';
 import * as D from './data.mjs';
 
 const T = D.targets.perInstance;
@@ -14,6 +16,8 @@ const durationNote = (k, target) => {
   const reqs = k.metric('http_reqs').count, secs = k.durationMs / 1000;
   return `${n(reqs)} requests in ${secs.toFixed(4)} s. The target is ${n(target)} /s and the reported rate is ${n(k.metric('http_reqs').rate)} /s only because the run lasted slightly longer than 60 s, so the gap is a duration artefact and not a throughput shortfall; the row meets the target under the ADR 0000 rate rule. Derived: http_reqs.count / testRunDurationMs × 1000 (${n(reqs)} / ${secs.toFixed(4)} s = ${n(reqs / secs)}).`;
 };
+// A k6 summary metric value, whether the export nests it under `values` or not.
+const val = (m, k) => m?.values?.[k] ?? m?.[k];
 // Rows may carry a note; metricsMarkdown lists them under the table.
 
 
@@ -77,8 +81,19 @@ export function metricsRows() {
   const rc = D.k6('reservation-contention');
   if (rc) {
     const won = rc.metric('reservation_won').count, conf = rc.metric('reservation_conflict').count;
-    add('Reservations: concurrent attempts on one connector, winners / conflicts', 'exactly 1 winner', `${won} / ${conf}`, 'measured', [rc.file, rc.envFile]);
-    add('Reservations: double bookings', `${D.targets.slo.doubleBookings}`, `${won - 1}`, 'derived', [rc.file], 'reservation_won - 1');
+    add('Reservations: 100 concurrent attempts on one connector, winners / conflicts (one run, earlier script, build without the advisory lock)', 'exactly 1 winner', `${won} / ${conf}`, 'measured', [rc.file, rc.envFile]);
+    add('Reservations: double bookings in that run', `${D.targets.slo.doubleBookings}`, `${won - 1}`, 'derived', [rc.file], 'reservation_won - 1', 'This is the no-fault, single-primary case. After a failover to an asynchronous replica the history checker found 32 overlapping reservations (ADR 0018), so "0" does not hold across a primary loss.');
+  }
+  // Series of 30 runs, N=50 concurrent drivers, current script (probes for a free connector, winner releases it).
+  for (const dir of fs.readdirSync(path.join(D.ROOT, 'docs/load-output')).filter((d) => /^contention-n50-(fixed|unfixed)-build-/.test(d)).sort()) {
+    const base = path.join(D.ROOT, 'docs/load-output', dir);
+    const runs = fs.readdirSync(base).filter((f) => /^run-\d+\.json$/.test(f)).map((f) => JSON.parse(fs.readFileSync(path.join(base, f), 'utf8')).metrics);
+    if (!runs.length) continue;
+    const valid = runs.filter((m) => val(m.reservation_won, 'count') === 1 && val(m.reservation_conflict, 'count') === 49).length;
+    const slow = runs.map((m) => val(m.http_req_duration, 'max')).filter((v) => Number.isFinite(v));
+    const dl = Number(fs.readFileSync(path.join(base, 'deadlocks.txt'), 'utf8').match(/after=(\d+)/)?.[1] ?? NaN);
+    const fixed = dir.includes('-fixed-');
+    add(`Reservations: ${runs.length} runs of 50 concurrent drivers, ${fixed ? 'build with the per-connector advisory lock' : 'build without it (19632ab)'}`, 'every run: 1 winner, 49 conflicts', `${valid} of ${runs.length} runs valid; slowest request in a run ${n(Math.min(...slow), 'ms')} to ${n(Math.max(...slow), 'ms')}; "deadlock detected" in the Postgres log: ${dl}`, 'measured', [`docs/load-output/${dir}/NOTE.md`, `docs/load-output/${dir}/env.json`], undefined, fixed ? undefined : 'The invalid runs were 49 requests answered with an error instead of 409 after a Postgres deadlock stall (10,021 ms and 6,018 ms); see the NOTE.md of the series.');
   }
 
   // smart-charging
