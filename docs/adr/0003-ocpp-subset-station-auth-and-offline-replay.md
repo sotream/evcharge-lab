@@ -65,7 +65,10 @@ p99 is measured against the 500 ms target in `load/`.
 
 - While offline (up to 24 h) or unacknowledged, a station queues `StartTransaction`,
   `StopTransaction` and `MeterValues`. It replays them in order with their **original uniqueId**,
-  one CALL at a time, as OCPP requires.
+  one CALL at a time, as OCPP requires. The gateway does not rely on that: it answers a CALL beyond 16 unanswered ones
+  on a socket with `InternalError` (the station retries the same uniqueId), closes a socket with more than 1 MiB unsent,
+  and keeps only the first 4,096 characters of each raw-log frame (found in the November 2026 review: one faulty station
+  could fill the shared 20k produce buffer and make every other station on the instance get "backend busy").
 - **Duplicates are made harmless where state lives. The gateway does not cache them:**
   - `StartTransaction` and `StopTransaction` are idempotent in `sessions` (Postgres unique key
     `${stationId}:${uniqueId}`). The replay returns the same transactionId.
