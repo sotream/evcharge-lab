@@ -196,7 +196,7 @@ Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-none
 
 ## reservation-invariant-none-mutated
 
-no drill script. 1 of 1 runs passed.
+no drill script. 2 of 2 runs passed.
 
 ### reservation-invariant-none-mutated-20261108T205511Z
 
@@ -204,9 +204,15 @@ Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-none
 
 ![Drill timeline: reservation-invariant-none-mutated-20261108T205511Z](img/drill-reservation-invariant-none-mutated-20261108T205511Z.svg)
 
+### reservation-invariant-none-mutated-20261109T090303Z
+
+Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-none-mutated-20261109T090303Z/result.json), [timeline.jsonl](drill-output/reservation-invariant-none-mutated-20261109T090303Z/timeline.jsonl).
+
+![Drill timeline: reservation-invariant-none-mutated-20261109T090303Z](img/drill-reservation-invariant-none-mutated-20261109T090303Z.svg)
+
 ## reservation-invariant-pause
 
-no drill script. 1 of 1 runs passed.
+no drill script. 2 of 2 runs passed.
 
 ### reservation-invariant-pause-20261108T205154Z
 
@@ -214,15 +220,27 @@ Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-paus
 
 ![Drill timeline: reservation-invariant-pause-20261108T205154Z](img/drill-reservation-invariant-pause-20261108T205154Z.svg)
 
+### reservation-invariant-pause-20261109T090014Z
+
+Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-pause-20261109T090014Z/result.json), [timeline.jsonl](drill-output/reservation-invariant-pause-20261109T090014Z/timeline.jsonl).
+
+![Drill timeline: reservation-invariant-pause-20261109T090014Z](img/drill-reservation-invariant-pause-20261109T090014Z.svg)
+
 ## reservation-invariant-restart
 
-no drill script. 1 of 1 runs passed.
+no drill script. 2 of 2 runs passed.
 
 ### reservation-invariant-restart-20261108T205335Z
 
 Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-restart-20261108T205335Z/result.json), [timeline.jsonl](drill-output/reservation-invariant-restart-20261108T205335Z/timeline.jsonl).
 
 ![Drill timeline: reservation-invariant-restart-20261108T205335Z](img/drill-reservation-invariant-restart-20261108T205335Z.svg)
+
+### reservation-invariant-restart-20261109T090135Z
+
+Result: ✅ passed. Files: [result.json](drill-output/reservation-invariant-restart-20261109T090135Z/result.json), [timeline.jsonl](drill-output/reservation-invariant-restart-20261109T090135Z/timeline.jsonl).
+
+![Drill timeline: reservation-invariant-restart-20261109T090135Z](img/drill-reservation-invariant-restart-20261109T090135Z.svg)
 
 ## slow-postgres
 
