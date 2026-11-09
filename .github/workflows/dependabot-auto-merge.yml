@@ -1,18 +1,19 @@
 name: dependabot-auto-merge
 
 # Turns on auto-merge for Dependabot pull requests that are minor or patch updates.
-# GitHub merges them only after every required check of the protect-main ruleset is green.
+# GitHub merges them only after every required check of the main protection ruleset is green.
 # Major updates are left for a human. GitHub Actions bumps stay manual too: the workflow token
 # may not modify workflow files, so it cannot merge them.
 
 on: pull_request
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   auto-merge:
+    permissions:
+      contents: write
+      pull-requests: write
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
