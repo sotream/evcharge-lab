@@ -135,7 +135,7 @@ describe('reservations (ADR 0005)', () => {
     await h.db.pool.query("UPDATE reservations SET status = 'Cancelled' WHERE driver_id IN ($1, $2)", [d1.driverId, d2.driverId]);
   });
 
-  it('a Pending reservation whose ReserveNow got no result is rejected shortly after the command expired, and a late result is ignored', async () => {
+  it('a Pending reservation whose ReserveNow got no result is rejected shortly after the command expired, and a late Accepted does not revive it but cancels it on the station', async () => {
     const d = await h.registerDriver();
     const r = await h.driver(d.driverId)('POST', '/v1/reservations', { key: randomUUID(), body: { stationId: 'st-0001-001', connectorId: 2 } });
     expect(r.status).toBe(201);
@@ -149,7 +149,9 @@ describe('reservations (ADR 0005)', () => {
     expect(await rowOf(r.body.reservationId)).toBe('Rejected');
     await waitFor(() => h.sessionEvents.filter((e) => e.type === 'reservation.ended' && e.data.reservationId === r.body.reservationId && e.data.reason === 'Rejected').length === 1);
     await h.publishCommandResult(cmd.data.commandId, 'st-0001-001', 'ReserveNow', 'Accepted');
-    await new Promise((res) => setTimeout(res, 800));
+    // The station now holds the connector for a reservation sessions no longer knows: it must be told to drop it.
+    await waitFor(() => h.commands.some((c) => c.data.action === 'CancelReservation' && c.data.payload['reservationId'] === r.body.reservationId));
+    expect(h.commands.filter((c) => c.data.action === 'CancelReservation' && c.data.payload['reservationId'] === r.body.reservationId)).toHaveLength(1);
     expect(await rowOf(r.body.reservationId)).toBe('Rejected');
   });
 
