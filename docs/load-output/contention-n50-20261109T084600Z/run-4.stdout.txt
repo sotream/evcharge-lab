@@ -1,0 +1,2 @@
+rate=1451.8/s p95=23.87ms p99=24.13ms
+time="2026-11-09T09:46:06+01:00" level=error msg="thresholds on metrics 'reservation_conflict, reservation_won' have been crossed"
