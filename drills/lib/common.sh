@@ -51,6 +51,10 @@ finish() {
   printf '{"drill":"%s","startedAt":"%s","pass":%s,"checks":[%s]}\n' "$DRILL_NAME" "$STAMP" "$all" "$(IFS=,; echo "${CHECKS[*]}")" > "$OUT/result.json"
   rm -f "$PHASE_FILE"
   log "RESULT pass=$all -> $OUT/result.json"
+  # A failed check is a failed drill: callers and CI can see it (the result.json above is written either way).
+  # DEFER_EXIT=1 (set by drills that still have cleanup after finish) leaves the exit to the script: [ "$DRILL_PASS" = true ] || exit 1.
+  DRILL_PASS=$all
+  [ "$all" = true ] || [ "${DEFER_EXIT:-0}" = 1 ] || exit 1
 }
 
 wait_until() { # timeout_s description command...

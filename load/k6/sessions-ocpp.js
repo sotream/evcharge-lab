@@ -11,7 +11,7 @@ const SITES = Number(__ENV.SITES || 20);
 const PER_SITE = Number(__ENV.STATIONS_PER_SITE || 10);
 export const options = {
   scenarios: { open: { executor: 'constant-arrival-rate', rate: Number(__ENV.RATE || T.commandsPerSec) / 2, timeUnit: '1s', duration: __ENV.DURATION || '60s', preAllocatedVUs: 150, maxVUs: 400 } },
-  thresholds: { 'http_req_duration{op:start}': ['p(99)<500'], 'http_req_duration{op:stop}': ['p(99)<500'], http_req_failed: ['rate<0.001'], dropped_iterations: [`rate<${T.commandsPerSec * 0.005}`] },
+  thresholds: { 'http_req_duration{op:start}': ['p(99)<500'], 'http_req_duration{op:stop}': ['p(99)<500'], http_req_failed: ['rate==0'], dropped_iterations: ['count==0'] },
   summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max'],
 };
 export default function () {

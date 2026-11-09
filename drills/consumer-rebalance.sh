@@ -186,8 +186,9 @@ check "forced_redelivery_records_suppressed" "$REPLAY_DEDUP" ge 1
 check "forced_redelivery_lag_drained_s" "$REPLAY_DRAIN" le "$DRAIN_MAX_S"
 check "fleet_connected_after" "$(prom 'sum(sim_connected_stations)')" ge "$TOTAL"
 node drills/lib/rebalance-report.mjs "$OUT" >&2 || log "rebalance-report failed"
-finish
+DEFER_EXIT=1 finish
 if [ "$RESTORE_SIM" = 1 ]; then
   log "RUN recreate the simulator with the default meter interval"
   docker compose up -d simulator >/dev/null 2>&1
 fi
+[ "$DRILL_PASS" = true ] || exit 1

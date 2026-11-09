@@ -175,10 +175,11 @@ fi
 check "acknowledged_probe_writes_lost" "$(field probe.lost)" eq 0
 check "history_checker_violations" "$CHECK_RC" eq 0
 check "fleet_connected_after" "$(prom 'sum(sim_connected_stations)')" ge "$TOTAL"
-finish
+DEFER_EXIT=1 finish
 cat "$OUT/timeline.txt" >&2
 
 if [ "$RESET" = 1 ]; then
   trap - EXIT
   drills/lib/reset-stack.sh
 fi
+[ "$DRILL_PASS" = true ] || exit 1
