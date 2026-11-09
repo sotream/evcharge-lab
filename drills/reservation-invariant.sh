@@ -68,6 +68,7 @@ cat > "$OUT/q.json" <<'Q'
 }
 Q
 start_sampler "$OUT/q.json"
+RUN_START_MS=$(now_ms) # the table dump below keeps only rows created from here on, not leftovers of earlier runs
 OUT="$OUT/history" DURATION_S=3600 DRIVERS="$DRIVERS" node load/history/generate.mjs 2>>"$OUT/events.log" &
 GEN_PID=$!
 log "history generator pid $GEN_PID ($DRIVERS drivers)"
@@ -90,7 +91,7 @@ kill "$GEN_PID" 2>/dev/null || true
 wait "$GEN_PID" 2>/dev/null || true
 GEN_PID=""
 
-docker exec "$PRIM" psql -U evcharge -d sessions -At -c "SELECT COALESCE(json_agg(json_build_object('reservation_id', r.reservation_id, 'station_id', c.station_id, 'connector_id', c.connector_id, 'starts_at', r.starts_at, 'expires_at', r.expires_at, 'status', r.status, 'ended_at', r.ended_at)), '[]') FROM reservations r JOIN connectors c ON c.connector_pk = r.connector_pk" > "$OUT/history/reservations.json"
+docker exec "$PRIM" psql -U evcharge -d sessions -At -c "SELECT COALESCE(json_agg(json_build_object('reservation_id', r.reservation_id, 'station_id', c.station_id, 'connector_id', c.connector_id, 'starts_at', r.starts_at, 'expires_at', r.expires_at, 'status', r.status, 'ended_at', r.ended_at)), '[]') FROM reservations r JOIN connectors c ON c.connector_pk = r.connector_pk WHERE r.created_at >= to_timestamp($RUN_START_MS / 1000.0)" > "$OUT/history/reservations.json"
 set +e
 node load/history/check.mjs --history "$OUT/history/history.jsonl" --db "$OUT/history/reservations.json" > "$OUT/history/check-report.txt" 2>&1
 CHECK_RC=$?
