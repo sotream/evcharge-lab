@@ -90,3 +90,7 @@ of invoices equals the number of sessions and that each invoice has one capture.
   `services/billing/test/int/saga.test.ts` (tariff outage case, "retries with backoff while tariff is down, then invoices
   and captures once") shows the saga waiting in PRICING and completing after recovery. There is no tariff-down drill in
   `drills/`.
+- A saga that gives up in PRICING (tariff rejects the quote for good, or the 24 h deadline passes) still holds the
+  authorization. It moves to CAPTURE_FAILED so `stepRelease` frees the hold, and `billing.payment-failed` is emitted
+  with step `pricing`. Before the November 2026 review it only stopped retrying and the hold stayed on the card.
+  Test: "a quote the tariff service rejects for good releases the hold".

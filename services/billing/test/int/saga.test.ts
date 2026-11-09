@@ -141,6 +141,36 @@ describe('tariff outage: the saga waits in PRICING and completes after recovery'
   });
 });
 
+describe('a quote the tariff service rejects for good releases the hold', () => {
+  let tariff: StubTariff;
+  let h: Harness;
+  beforeAll(async () => {
+    tariff = await startStubTariff();
+    h = await createHarness(tariff.url, 3);
+  });
+  afterAll(async () => {
+    await h?.close();
+    await tariff?.close();
+  });
+
+  it('parks in PRICING territory without leaving the authorization on the card', async () => {
+    tariff.reject = 400;
+    await h.db.pool.query('INSERT INTO payment_methods (driver_id, token) VALUES ($1, $2)', [driverIdOf(7), 'tok_7']);
+    await h.startInstance();
+    await h.publishSession(startedEvent(7, driverIdOf(7)));
+    await h.publishSession(completedEvent(7, driverIdOf(7), 10_000));
+
+    await waitFor(async () => (await sagaState(h, 7)) === 'CAPTURE_FAILED', { what: 'saga handed to compensation' });
+    const row = (await h.db.pool.query<{ authorization_id: string; hold_released: boolean; failure_reason: string }>('SELECT authorization_id, hold_released, failure_reason FROM billing_sagas WHERE session_id = $1', [sessionIdOf(7)])).rows[0];
+    expect(row?.authorization_id).toBeTruthy();
+    expect(row?.failure_reason).toContain('tariff rejected the quote');
+    await waitFor(async () => (await h.db.pool.query<{ released: boolean }>('SELECT released FROM psp_authorizations WHERE authorization_id = $1', [row?.authorization_id])).rows[0]?.released, { what: 'hold released' });
+    await waitFor(async () => (await h.db.pool.query<{ hold_released: boolean }>('SELECT hold_released FROM billing_sagas WHERE session_id = $1', [sessionIdOf(7)])).rows[0]?.hold_released, { what: 'saga records the release' });
+    await waitFor(() => h.billingEvents.some((e) => e.type === 'billing.payment-failed' && e.data.sessionId === sessionIdOf(7) && e.data.step === 'pricing'), { what: 'payment-failed on Kafka' });
+    expect(await count(h, 'SELECT count(*) AS n FROM invoices')).toBe(0);
+  });
+});
+
 describe('declines, compensation and the HTTP API', () => {
   let tariff: StubTariff;
   let h: Harness;

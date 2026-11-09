@@ -80,6 +80,8 @@ export interface StubTariff {
   url: string;
   calls: number;
   down: boolean;
+  /** When set, every quote answers with this 4xx status (a permanent rejection). */
+  reject?: number;
   close(): Promise<void>;
 }
 
@@ -106,6 +108,10 @@ export async function startStubTariff(): Promise<StubTariff> {
       }
       if (stub.down) {
         res.writeHead(503, { 'content-type': 'application/problem+json' }).end(JSON.stringify({ title: 'Service Unavailable', status: 503 }));
+        return;
+      }
+      if (stub.reject) {
+        res.writeHead(stub.reject, { 'content-type': 'application/problem+json' }).end(JSON.stringify({ title: 'Rejected', status: stub.reject }));
         return;
       }
       const energy = Math.ceil((body.energyWh / 1000) * 40);

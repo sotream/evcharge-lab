@@ -530,12 +530,17 @@ export class SagaEngine {
   private async park(row: SagaRow, step: string, reason: string, emitFailure: boolean): Promise<void> {
     this.log.error({ sessionId: row.session_id, step, reason }, 'saga parked');
     metrics.sagasParked.inc({ step });
+    // A saga stopped in PRICING still holds the authorization. Hand it to the compensation path (CAPTURE_FAILED, stepRelease)
+    // so the hold is released instead of staying on the card until the PSP expires it.
+    const holdToRelease = row.state === 'PRICING' && row.authorization_id !== null && !row.hold_released;
     await withTx(this.pool, async (c) => {
-      await c.query('UPDATE billing_sagas SET next_attempt_at = NULL, lease_until = NULL, last_error = $3, failure_reason = $3, updated_at = now() WHERE session_id = $1 AND state = $2', [
-        row.session_id,
-        row.state,
-        reason.slice(0, 500),
-      ]);
+      const res = await c.query(
+        holdToRelease
+          ? "UPDATE billing_sagas SET state = 'CAPTURE_FAILED', attempts = 0, next_attempt_at = now(), lease_until = NULL, last_error = $3, failure_reason = $3, updated_at = now() WHERE session_id = $1 AND state = $2"
+          : 'UPDATE billing_sagas SET next_attempt_at = NULL, lease_until = NULL, last_error = $3, failure_reason = $3, updated_at = now() WHERE session_id = $1 AND state = $2',
+        [row.session_id, row.state, reason.slice(0, 500)],
+      );
+      if (res.rowCount === 0) throw new StateChanged();
       if (emitFailure) await this.emit(c, row.session_id, 'billing.payment-failed', { invoiceId: null, sessionId: row.session_id, step, reason: reason.slice(0, 500) });
     });
   }
