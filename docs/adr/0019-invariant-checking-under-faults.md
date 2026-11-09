@@ -55,6 +55,9 @@ All runs under `docs/drill-output/`, machine in each `env.json`. "Ack" is acknow
 | `reservation-invariant-pause-20261108T205154Z` | sessions paused 15 s | 1,123 | 121 | 647 | 116 (3) | PASS |
 | `reservation-invariant-restart-20261108T205335Z` | sessions restarted | 1,065 | 153 | 581 | 100 (0) | PASS |
 | `reservation-invariant-none-mutated-20261108T205511Z` | **protection disabled** | 883 | 433 | 17 | 0 | **FAIL, 292 violations** (5 constraints dropped, 5 restored) |
+| `reservation-invariant-pause-20261109T090014Z` | sessions paused 15 s, build with the advisory lock (ADR 0005) | 1,125 | 135 | 634 | 109 (2) | PASS |
+| `reservation-invariant-restart-20261109T090135Z` | sessions restarted, same build | 1,123 | 183 | 570 | 93 (0) | PASS |
+| `reservation-invariant-none-mutated-20261109T090303Z` | **protection disabled**, same build | 920 | 460 | 0 | 0 | **FAIL, 315 violations** (5 constraints dropped, 5 restored) |
 | `postgres-failover-auto-async-stall0-20261108T203614Z` | primary killed, replica promoted | 1,535 | 273 | 803 | 90 (0) | PASS |
 | `postgres-failover-auto-async-stall3-20261108T220826Z` | same, replica unreachable 3 s before | 1,528 | 191 | 968 | 88 (0) | **FAIL, 42 violations: 10 lost acknowledged reservations, 32 overlapping pairs (each with a lost reservation on one side)** |
 | `postgres-failover-auto-sync-stall0-20261108T204337Z` | same, synchronous standby | 1,316 | 264 | 776 | 8 (0) | PASS |

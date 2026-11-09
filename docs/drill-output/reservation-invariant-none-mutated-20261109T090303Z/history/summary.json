@@ -1,0 +1,36 @@
+{
+  "total": 920,
+  "byOutcome": {
+    "ok": 920
+  },
+  "byType": {
+    "reserve": 460,
+    "cancel": 460
+  },
+  "connectors": [
+    {
+      "stationId": "st-0009-002",
+      "connectorId": 1
+    },
+    {
+      "stationId": "st-0009-002",
+      "connectorId": 2
+    },
+    {
+      "stationId": "st-0009-003",
+      "connectorId": 1
+    },
+    {
+      "stationId": "st-0009-004",
+      "connectorId": 2
+    },
+    {
+      "stationId": "st-0009-005",
+      "connectorId": 1
+    },
+    {
+      "stationId": "st-0009-005",
+      "connectorId": 2
+    }
+  ]
+}

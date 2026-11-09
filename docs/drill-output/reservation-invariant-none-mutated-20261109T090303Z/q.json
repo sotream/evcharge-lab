@@ -1,0 +1,6 @@
+{
+  "sim_connected": "sum(sim_connected_stations)",
+  "sessions_5xx_per_s": "sum(rate(http_server_requests_seconds_count{service=\"sessions\",status=~\"5..\"}[10s]))",
+  "driver_api_5xx_per_s": "sum(rate(http_server_requests_seconds_count{service=\"driver-api\",status=~\"5..\"}[10s]))",
+  "sessions_p99_s": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service=\"sessions\"}[15s])))"
+}

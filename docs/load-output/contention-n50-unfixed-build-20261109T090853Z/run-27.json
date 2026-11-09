@@ -1,0 +1,284 @@
+{
+  "root_group": {
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [],
+    "checks": [
+        {
+          "fails": 0,
+          "name": "201 or 409",
+          "path": "::201 or 409",
+          "id": "2f4c20c86729c756834124983dc74516",
+          "passes": 50
+        }
+      ]
+  },
+  "options": {
+    "summaryTimeUnit": "",
+    "noColor": false,
+    "summaryTrendStats": [
+      "avg",
+      "p(50)",
+      "p(95)",
+      "p(99)",
+      "max"
+    ]
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 3112.705
+  },
+  "metrics": {
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.32043689320388347,
+        "p(50)": 0,
+        "p(95)": 1.4796,
+        "p(99)": 1.75992,
+        "max": 1.899
+      }
+    },
+    "iteration_duration": {
+      "contains": "time",
+      "values": {
+        "p(50)": 49.9725205,
+        "p(95)": 56.17617895,
+        "p(99)": 1584.3539330799988,
+        "max": 3052.261,
+        "avg": 109.82038087999999
+      },
+      "type": "trend"
+    },
+    "vus_max": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 50,
+        "min": 50,
+        "max": 50
+      }
+    },
+    "http_req_waiting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(50)": 3.79,
+        "p(95)": 52.8703,
+        "p(99)": 55.31764,
+        "max": 55.935,
+        "avg": 23.952038834951455
+      }
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 103
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 24.082864077669907,
+        "p(50)": 3.828,
+        "p(95)": 52.9182,
+        "p(99)": 55.55812,
+        "max": 56.071
+      }
+    },
+    "http_req_blocked": {
+      "values": {
+        "avg": 0.3625339805825243,
+        "p(50)": 0.015,
+        "p(95)": 1.5496999999999999,
+        "p(99)": 1.78888,
+        "max": 1.92
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_tls_handshaking": {
+      "values": {
+        "max": 0,
+        "avg": 0,
+        "p(50)": 0,
+        "p(95)": 0,
+        "p(99)": 0
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 0.3315,
+        "p(99)": 1.03474,
+        "max": 1.941,
+        "avg": 0.10452427184466018,
+        "p(50)": 0.012
+      }
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.026300970873786387,
+        "p(50)": 0.023,
+        "p(95)": 0.04779999999999999,
+        "p(99)": 0.07591999999999999,
+        "max": 0.098
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "value": 1,
+        "min": 1,
+        "max": 1
+      }
+    },
+    "reservation_won": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 1,
+        "rate": 0.3212639810068734
+      },
+      "thresholds": {
+        "count==1": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "contains": "time",
+      "values": {
+        "p(99)": 55.55812,
+        "max": 56.071,
+        "avg": 24.082864077669907,
+        "p(50)": 3.828,
+        "p(95)": 52.9182
+      },
+      "type": "trend"
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 103,
+        "rate": 33.09019004370796
+      }
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 50,
+        "fails": 0
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 50,
+        "rate": 16.063199050343673
+      }
+    },
+    "data_sent": {
+      "values": {
+        "count": 33838,
+        "rate": 10870.930589310583
+      },
+      "type": "counter",
+      "contains": "data"
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "rate": 9790.519821184467,
+        "count": 30475
+      }
+    },
+    "reservation_conflict": {
+      "values": {
+        "count": 49,
+        "rate": 15.7419350693368
+      },
+      "thresholds": {
+        "count==49": {
+          "ok": true
+        }
+      },
+      "type": "counter",
+      "contains": "default"
+    }
+  },
+  "setup_data": {
+    "connectorId": 1,
+    "drivers": [
+      "db8e2988-2a00-40be-a426-ccaebadca776",
+      "ffc82e94-5eb2-476e-882c-2462e62f026e",
+      "054241a1-1a30-401d-94fa-92f978dc375b",
+      "d17f2c5d-c822-4e18-896d-cc148d320c80",
+      "25e37d9d-f1b6-484f-821a-de00ab0e2997",
+      "e10c25b0-50d2-469e-a0c8-9dc1d228b516",
+      "dde26309-4e26-4151-b204-9da51f3d91df",
+      "46f0fe64-7cb0-4400-b82b-c59d788fc5e2",
+      "4419db31-3b2f-450e-aec5-2b42d6486b78",
+      "786ef656-ccf9-42b0-8fa7-453574791026",
+      "e62aa5f8-ffa7-4549-8bd3-ee00e0add486",
+      "dea6a851-2b21-4a5f-920a-c1836789d435",
+      "2b63eac1-0ac2-487e-aed8-44e07514f5dd",
+      "ab72c59b-42e1-4ff1-b79a-29a42a6454a0",
+      "3112b651-41ad-4768-be6e-7f37a89d73e9",
+      "4a32565d-756a-4646-bae1-d5c27f2f0e25",
+      "8ec6db70-56b9-485e-ac86-89b13ed249ae",
+      "9fb24aec-2bf4-4b9c-9fd6-a8bbfe6d6dd0",
+      "36f64c9a-a1d9-4e1d-8960-5133a7ab67ac",
+      "5b7b98be-4b3a-4b00-ae6c-f7bbdc14114c",
+      "0c2dcbd7-28cb-40f5-b10d-1c29273aa91e",
+      "b50ef574-39d7-41b5-b044-c2164ef2008b",
+      "89c1edd5-b044-46d0-9e20-872ff6916680",
+      "b689f3e5-eba4-4f30-a7a7-3115263e9d68",
+      "9f0fee8e-e650-4c0b-8203-ccd8535ae50a",
+      "5b192dc7-264d-406a-8e31-4090bfeefb20",
+      "99d085db-094a-4935-aca8-85794d9dc526",
+      "7f2733db-1077-4e6e-a879-9627d00cb97d",
+      "fa434c0e-a864-4786-88df-991519e60088",
+      "90bd5349-7315-4511-bf42-7521bd7dc4d5",
+      "b7ccc992-543c-42bb-9d71-3eddd79e4841",
+      "df8ebb41-41b3-4a24-96c3-bd66b8197046",
+      "90602841-4a0b-4856-9845-75f69dbb5614",
+      "8fc4cd46-d0f4-47d8-8ac1-be3e39a5a5b5",
+      "2674e427-8bb4-4840-9be0-ba97cebac37e",
+      "d00fcc47-f136-468f-b585-ff194a16d639",
+      "7dfb1248-0e7e-46d2-a3e6-fe28dd00039a",
+      "7d6ad5dc-3bcf-40e7-92c7-e702333045e3",
+      "a58dd60c-2295-45e9-9c18-3bd312e643d1",
+      "31771844-361b-4f69-bb6c-f43f104eb8d4",
+      "5b5a1ad6-5900-4012-8877-53ae2523eb5e",
+      "a31ee68a-e32d-4c20-99ed-ab92cb0e91f1",
+      "895f8ae9-8217-4443-9caf-0d09a9f43be9",
+      "3573c2d7-7c0b-4ea6-9ea6-f0bd7ca6d551",
+      "3d7f0083-0ef0-4c44-9ef1-674f616764a1",
+      "20ee63ee-ac13-47e7-8d8a-1479856e6ae8",
+      "e5bb8b41-4545-49b3-9a6f-351e964823c7",
+      "9bfc4b09-a333-4f62-a091-e3eab08b3494",
+      "ef505f26-3e45-4812-ae81-c0f41fd433c6",
+      "3b586441-d6a4-4f3f-946a-0ea687aecc37"
+    ],
+    "stationId": "st-0020-001"
+  }
+}
