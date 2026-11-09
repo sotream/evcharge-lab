@@ -6,7 +6,7 @@
 import type { events } from '@evcharge/contracts';
 import { type Logger, type Pool, withInbox, withTx } from '@evcharge/platform';
 import { m } from '../metrics';
-import { emitSessionEvent, PRODUCER, type TopicNames } from '../outbox-events';
+import { emitSessionEvent, enqueueCommand, PRODUCER, type TopicNames } from '../outbox-events';
 import type { SiteSignal } from '../site-signal';
 
 export const STATION_EVENTS_CONSUMER = 'sessions.station-events';
@@ -80,7 +80,13 @@ export class StationEventHandlers {
           [d.commandId, d.outcome, d.response ? JSON.stringify(d.response) : null],
         );
         const cmd = rows[0];
-        if (!cmd) return; // unknown or already completed
+        if (!cmd) {
+          // Unknown or already completed. One case needs an action: the station accepted a ReserveNow only after the
+          // sweeper gave up on it (command Expired, reservation Rejected). The station now holds the connector for a
+          // reservation this service no longer knows, so tell it to drop it.
+          if (d.outcome === 'Accepted') await this.cancelLateReservation(c, d.commandId);
+          return;
+        }
         m.commandResults.inc({ action: cmd.action, outcome: d.outcome });
         const accepted = d.outcome === 'Accepted';
         switch (cmd.action) {
@@ -117,6 +123,19 @@ export class StationEventHandlers {
       }),
     );
     if (!out.duplicate && out.result) this.signal?.changed(out.result);
+  }
+
+  private async cancelLateReservation(c: Parameters<Parameters<typeof withTx>[1]>[0], commandId: string): Promise<void> {
+    const { rows } = await c.query<{ station_id: string; reservation_id: number; reservation_starts_at: Date; driver_id: string }>(
+      `SELECT cmd.station_id, cmd.reservation_id, cmd.reservation_starts_at, r.driver_id
+         FROM commands cmd JOIN reservations r ON r.reservation_id = cmd.reservation_id AND r.starts_at = cmd.reservation_starts_at
+        WHERE cmd.command_id = $1 AND cmd.action = 'ReserveNow' AND cmd.outcome = 'Expired' AND r.status = 'Rejected'`,
+      [commandId],
+    );
+    const late = rows[0];
+    if (!late) return;
+    await enqueueCommand(c, this.topics, late.station_id, 'CancelReservation', { reservationId: late.reservation_id }, { reservationId: late.reservation_id, reservationStartsAt: late.reservation_starts_at, driverId: late.driver_id });
+    this.logger.warn({ commandId, stationId: late.station_id, reservationId: late.reservation_id }, 'station accepted ReserveNow after it expired; sent CancelReservation');
   }
 
   /**
