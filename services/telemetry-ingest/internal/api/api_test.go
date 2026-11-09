@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+func TestParseSeriesQueryWidensDefaultStepForLongRanges(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	q, err := ParseSeriesQuery("2026-11-06T00:00:00Z", "2026-11-08T00:00:00Z", "", now) // 48 h
+	if err != nil || q.Step != 2*time.Minute {
+		t.Fatalf("48 h without step: step %v err %v, want 2m", q.Step, err)
+	}
+	if _, err = ParseSeriesQuery("2026-11-06T00:00:00Z", "2026-11-08T00:00:00Z", "1m", now); err == nil {
+		t.Fatal("an explicit 1m step over 48 h must still be rejected")
+	}
+}
+
 func TestParseSeriesQuery(t *testing.T) {
 	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	q, err := ParseSeriesQuery("", "", "", now)

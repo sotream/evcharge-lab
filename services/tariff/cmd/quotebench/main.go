@@ -129,8 +129,8 @@ func genReq(rng *rand.Rand) contracts.QuoteReq {
 	mins := math.Min(240, math.Max(5, rng.ExpFloat64()*40+5))
 	dur := time.Duration(mins * float64(time.Minute)).Truncate(time.Second)
 	kw := 3 + rng.Float64()*57
-	return contracts.QuoteReq{TariffID: tariffIDs[rng.IntN(len(tariffIDs))], StartedAt: start, StoppedAt: start.Add(dur),
-		EnergyWh: int64(kw * dur.Hours() * 1000)}
+	wh := int64(kw * dur.Hours() * 1000)
+	return contracts.QuoteReq{TariffID: tariffIDs[rng.IntN(len(tariffIDs))], StartedAt: start, StoppedAt: start.Add(dur), EnergyWh: &wh}
 }
 
 type worker func(ctx context.Context, rng *rand.Rand) (errKey string)
@@ -260,7 +260,7 @@ func benchCalc(o opts) (result, error) {
 		if err != nil {
 			return "no_version"
 		}
-		if _, err := pricing.Quote(v, pricing.Request{StartedAt: q.StartedAt, StoppedAt: q.StoppedAt, EnergyWh: q.EnergyWh}); err != nil {
+		if _, err := pricing.Quote(v, pricing.Request{StartedAt: q.StartedAt, StoppedAt: q.StoppedAt, EnergyWh: *q.EnergyWh}); err != nil {
 			return "quote"
 		}
 		return ""

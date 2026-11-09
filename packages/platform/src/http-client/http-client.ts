@@ -111,7 +111,7 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
         res = await doFetch(url, { method, headers, ...(body !== undefined ? { body } : {}), signal });
       } catch (err) {
         if (r.signal?.aborted) {
-          breaker.onNeutral();
+          breaker.onAbandon();
           observe('aborted');
           throw err;
         }

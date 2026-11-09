@@ -70,6 +70,11 @@ export class CircuitBreaker {
     if (this.stateValue === 'half-open') this.onSuccess();
   }
 
+  /** The caller gave up (its own abort signal) before the call said anything about the dependency: free the trial slot, change nothing else. */
+  onAbandon(): void {
+    this.trialInFlight = false;
+  }
+
   reset(): void {
     this.onSuccess();
   }

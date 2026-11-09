@@ -3,6 +3,17 @@ import { CircuitBreaker } from '../../src/http-client/circuit-breaker';
 import { fullJitterBackoff } from '../../src/util';
 
 describe('CircuitBreaker', () => {
+  it('an abandoned half-open trial frees the slot but does not close the circuit', () => {
+    let now = 0;
+    const cb = new CircuitBreaker({ failureThreshold: 1, openMs: 1000, now: () => now });
+    cb.onFailure();
+    now = 1000;
+    expect(cb.tryAcquire()).toBe(true);
+    cb.onAbandon();
+    expect(cb.state).toBe('half-open');
+    expect(cb.tryAcquire()).toBe(true); // a new trial may run
+  });
+
   it('opens after N consecutive failures, half-opens after openMs, closes on success', () => {
     let now = 0;
     const cb = new CircuitBreaker({ failureThreshold: 3, openMs: 1000, now: () => now });

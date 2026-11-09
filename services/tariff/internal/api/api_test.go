@@ -85,6 +85,8 @@ func TestQuoteAndErrors(t *testing.T) {
 		{"unknown field", `{"tariffId":"std","x":1}`, token, 400, ""},
 		{"missing tariff id", `{"startedAt":"2026-01-15T10:00:00Z","stoppedAt":"2026-01-15T10:45:00Z","energyWh":1}`, token, 400, "validation"},
 		{"stop before start", `{"tariffId":"std","startedAt":"2026-01-15T10:00:00Z","stoppedAt":"2026-01-15T09:45:00Z","energyWh":1}`, token, 400, "validation"},
+		{"missing energy", `{"tariffId":"std","startedAt":"2026-01-15T10:00:00Z","stoppedAt":"2026-01-15T10:45:00Z"}`, token, 400, "validation"},
+		{"missing startedAt", `{"tariffId":"std","stoppedAt":"2026-01-15T10:45:00Z","energyWh":1}`, token, 400, "validation"},
 		{"negative energy", `{"tariffId":"std","startedAt":"2026-01-15T10:00:00Z","stoppedAt":"2026-01-15T10:45:00Z","energyWh":-1}`, token, 400, "validation"},
 		{"unknown tariff", strings.Replace(ok, `"std"`, `"nope"`, 1), token, 404, "tariff_not_found"},
 		{"before first version", strings.Replace(ok, "2026-01-15T10:00", "2019-01-15T10:00", 1), token, 422, "no_tariff_version"},
