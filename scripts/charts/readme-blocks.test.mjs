@@ -6,16 +6,18 @@ import path from 'node:path';
 import * as D from './data.mjs';
 import { counts, glanceRows, glanceMarkdown, drillGroups, drillsTable, drillsPage, drillWhat, parseFindings, findingsTable, foundByKind, statsMarkdown } from './readme-blocks.mjs';
 
-const README = fs.readFileSync(path.join(D.ROOT, 'README.md'), 'utf8');
-const block = (name) => README.slice(README.indexOf(`<!-- ${name}:start`)).split(/-->\n/).slice(1).join('-->\n').split(`<!-- ${name}:end -->`)[0];
+const read = (f) => fs.readFileSync(path.join(D.ROOT, f), 'utf8');
+const README = read('README.md');
+const FINDINGS = read('docs/findings.md');
+const block = (md, name) => md.slice(md.indexOf(`<!-- ${name}:start`)).split(/-->\n/).slice(1).join('-->\n').split(`<!-- ${name}:end -->`)[0];
 
 test('counts match the files on disk', () => {
-  const c = counts(README);
+  const c = counts(FINDINGS);
   assert.equal(c.runsTotal, fs.readdirSync(D.DRILL_DIR).length);
   assert.equal(c.runsPassed, D.drills().filter((d) => d.result?.pass).length);
   assert.ok(c.drillsLatestPass <= c.drillsTotal && c.drillsTotal <= c.runsTotal);
   assert.equal(c.drillScripts, fs.readdirSync(path.join(D.ROOT, 'drills')).filter((f) => f.endsWith('.sh')).length);
-  assert.equal(c.findingsTotal, README.match(/<details id="finding-\d+">/g).length);
+  assert.equal(c.findingsTotal, FINDINGS.match(/<details id="finding-\d+">/g).length);
 });
 
 test('glance table has one row per target in load/targets.json and verdicts follow the numbers', () => {
@@ -30,24 +32,23 @@ test('drills table covers every run and links to a heading in docs/drills.md', (
   const groups = drillGroups(), page = drillsPage();
   assert.equal(groups.reduce((n, g) => n + g.runs.length, 0), D.drills().length);
   for (const d of D.drills()) assert.ok(page.includes(`### ${d.name}\n`), d.name);
-  for (const g of groups) assert.ok(drillsTable().includes(`docs/drills.md#${g.latest.name.toLowerCase()}`));
+  for (const g of groups) assert.ok(drillsTable().includes(`docs/drills.md#${g.latest.name.toLowerCase()}`) && page.includes(`(drills.md#${g.latest.name.toLowerCase()})`));
   assert.match(drillWhat('kafka-broker-loss-2-20261108T123144Z'), /two brokers down/);
 });
 
-test('findings are parsed from the README items', () => {
-  const f = parseFindings(README);
+test('findings are parsed from the items in docs/findings.md', () => {
+  const f = parseFindings(FINDINGS);
   assert.deepEqual(f.map((x) => x.n), f.map((_, i) => i + 1));
   assert.equal(foundByKind('the Opus review of `billing`.'), 'review');
   assert.equal(foundByKind('a k6 sessions run'), 'k6');
   assert.equal(foundByKind('checking the running compose stack'), 'manual check');
-  assert.equal(findingsTable(README).split('\n').filter((l) => /^\| \d+ \|/.test(l)).length, f.length);
+  assert.equal(findingsTable(FINDINGS).split('\n').filter((l) => /^\| \d+ \|/.test(l)).length, f.length);
 });
 
 test('generated README blocks are not stale', () => {
-  assert.equal(block('stats'), statsMarkdown(README));
-  assert.equal(block('glance'), glanceMarkdown());
-  assert.equal(block('drills'), drillsTable());
-  assert.equal(block('findings'), findingsTable(README));
+  assert.equal(block(README, 'stats'), statsMarkdown(FINDINGS));
+  assert.equal(block(README, 'glance'), glanceMarkdown());
+  assert.equal(block(FINDINGS, 'findings'), findingsTable(FINDINGS));
   assert.equal(fs.readFileSync(path.join(D.ROOT, 'docs/drills.md'), 'utf8'), drillsPage());
 });
 

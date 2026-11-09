@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-11-09
 - Context: the November 2026 review listed findings that were checked and left as they are. Each one is a deliberate
-  trade-off of a lab, not an oversight. None changes a number in the README. If any becomes a requirement, the "Revisit
+  trade-off of a lab, not an oversight. None changes a number in the docs. If any becomes a requirement, the "Revisit
   when" line says what to build.
 
 ## Decision
@@ -48,7 +48,7 @@ does not hold between monthly partitions for rows near a month boundary. It was 
 non-partitioned table.
 
 **The k6 runs from before the rewrite keep their incomplete env records.** Only the gateway series was rerun. The other
-runs were not repeated through the current `run.sh`; the README labels which env records are incomplete. Repeating them
+runs were not repeated through the current `run.sh`; docs/results.md labels which env records are incomplete. Repeating them
 changes no conclusion and costs hours on the measurement laptop.
 
 **Redis has no password and compose secrets have defaults.** Every published port is bound to `127.0.0.1` unless `BIND` is
@@ -60,6 +60,6 @@ Revisit when: images are published or someone needs a byte-identical history.
 
 ## Consequences
 
-- The README "Known limits" section points here, so a reader sees these as decisions rather than finds.
+- [`docs/known-limits.md`](../known-limits.md) points here, so a reader sees these as decisions rather than finds.
 - Each item above is a candidate, in the order a real deployment would need it: revocation, login limiter, billing
   currency and remainder, then the rest.
