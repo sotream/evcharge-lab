@@ -65,10 +65,28 @@ room for 24 ingest consumers).
   - **Commit order:** each row stores its inserting transaction id (`tx xid8`). The relay
     publishes only rows with `tx < pg_snapshot_xmin(pg_current_snapshot())`, ordered by
     `(tx, id)`. This holds back a row whose `bigserial` id came before a still-running
-    transaction. Causal order holds, because a transaction that reads another one's committed
-    effect has a larger transaction id.
+    transaction. What this guarantees: rows are published in transaction-id order, and a row never
+    overtakes a committed transaction that started its writes earlier.
+  - **The hold-back is cluster-wide.** `pg_snapshot_xmin` looks at every running transaction in the
+    Postgres cluster, not only in the service's database. Sessions, billing, tariff and driver data share
+    one server, so a long transaction anywhere (a migration with `statement_timeout = 0`, another
+    service's relay waiting for a Kafka ack) delays the events of all of them. Nothing is lost; they
+    arrive late.
+  - **What it does not guarantee** (correction, November 2026 review). The first version of this
+    ADR claimed causal order, "a transaction that reads another one's committed effect has a larger
+    transaction id". That is false: Postgres assigns the id at the transaction's first write (or row
+    lock), not after it has waited for a lock. Two StartTransactions on one connector can take ids
+    100 and 101, and the second can still win the connector lock and commit first. The relay then
+    publishes the first one's rows first, so a consumer can see `session.completed(S2)`
+    (written by the superseding StartTransaction, id 100) before `session.started(S2)` (id 101).
+    Moving the dedup insert after the lock would not help, because the row lock itself assigns the id
+    before it waits. Closing the window needs a lock that assigns no id (an advisory lock taken before
+    any write, in every writer of the connector: StartTransaction, StopTransaction, allocation rounds),
+    which this lab has not built. The window needs two concurrent StartTransactions on one connector,
+    so it is rare, and consumers must not assume `started` precedes `completed`.
 - **Handler errors are retried indefinitely** with capped backoff, and the partition blocks while
-  the lag alert fires. Only undecodable records go to the DLQ. Dead-lettering after a few attempts
+  the lag alert fires. Only undecodable records, and records the database rejects with a data
+  error (see the DLQ bullet above), go to the DLQ. Dead-lettering after a few attempts
   turned a 3 s Postgres blip into lost invoices.
 - **Consumers** commit offsets only after the handler succeeds (at-least-once). Handlers that
   change state insert `(consumer, eventId)` into `processed_events` in the same transaction

@@ -105,10 +105,10 @@ interface Row {
 }
 
 /**
- * Publishes outbox rows to Kafka. Each cycle claims up to batchSize unpublished rows with
- * `FOR UPDATE SKIP LOCKED` (so several relay instances split the work and never publish the same
- * row concurrently), produces them, waits for the acks, marks them published and commits.
- * If producing fails the transaction rolls back and the rows are retried (at-least-once).
+ * Publishes outbox rows to Kafka. One relay per database is active at a time (an advisory lock per cycle, so a second
+ * replica's cycle does nothing). A cycle takes up to batchSize unpublished rows of committed transactions, ordered by
+ * `(tx, id)`, produces them, waits for the acks, marks them published and commits. If producing fails the transaction rolls
+ * back and the rows are retried (at-least-once). The order is transaction-id order, not causal order (ADR 0002).
  */
 export class OutboxRelay {
   private running = false;
