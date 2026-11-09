@@ -65,7 +65,7 @@ export function targetVsMeasured() {
 export function throughputAndP99() {
   const rows = [];
   const add = (label, unit, rate, p99, limit, run) => rows.push({ label, unit, rate, p99, limit, run });
-  for (const r of D.k6List(/^k6-gateway-ws-/)) add(`station-gateway, ${r.metric('ws_sessions').count} stations`, 'msg/s', r.metric('ocpp_callresults').rate, r.metric('ocpp_callresult_ms')['p(99)'], r.threshold('ocpp_callresult_ms', /p\(99\)/)?.limit, r);
+  for (const r of D.k6List(/^k6-gateway-ws-/)) add(`station-gateway, ${r.metric('ws_sessions').count} stations`, 'msg/s', D.gatewayRate(r), r.metric('ocpp_callresult_ms')['p(99)'], r.threshold('ocpp_callresult_ms', /p\(99\)/)?.limit, r);
   const sess = D.k6List(/^k6-sessions-ocpp-rate/).sort((a, b) => a.metric('http_reqs').rate - b.metric('http_reqs').rate).at(-1);
   if (sess) add('sessions (highest rate of the sweep)', 'commands/s', sess.metric('http_reqs').rate, sess.metric('http_req_duration')['p(99)'], sess.threshold('http_req_duration{op:start}', /p\(99\)/)?.limit, sess);
   const dr = D.k6('driver-api-reads');

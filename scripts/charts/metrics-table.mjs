@@ -30,13 +30,13 @@ export function metricsRows() {
     add('Gateway: inbound OCPP frames/s, 10,000 simulated stations, stub sessions (not the pass/fail run)', 'n/a', `peak ${n(s.peakMsgInPerS)}; last-30 s average ${n(s.last30sAvgMsgInPerS)}`, 'measured', [g.file]);
   }
   for (const r of D.k6List(/^k6-gateway-ws-/)) {
-    const rate = r.metric('ocpp_callresults').rate, p99 = r.metric('ocpp_callresult_ms')['p(99)'];
+    const rate = D.gatewayRate(r), p99 = r.metric('ocpp_callresult_ms')['p(99)'];
     const offered = D.gatewayOfferedRate(r), cr = r.metric('ocpp_callresult_ms');
     const untested = offered !== null && offered < T['station-gateway'].msgPerSec;
-    add(`Gateway: msg/s, ${r.metric('ws_sessions').count} stations at 1 msg/s (k6)`, `≥ ${n(T['station-gateway'].msgPerSec)}`,
+    add(`Gateway: msg/s, ${r.metric('ws_sessions').count} stations at ${offered === null ? 1 : n(offered / r.metric('ws_sessions').count)} msg/s each (k6; ${D.gatewayRateBasis(r)})`, `≥ ${n(T['station-gateway'].msgPerSec)}`,
       untested ? `${n(rate)} (not tested: offered load is at most ${n(offered)} msg/s)` : `${n(rate)} (${V(rate, 'ge', T['station-gateway'].msgPerSec)})`,
       untested ? 'measured; offered load derived' : 'measured', [r.file, r.envFile], untested ? 'offered = stations × Hz (one outstanding CALL per station)' : undefined);
-    add(`Gateway: CALLRESULT p99, ${r.metric('ws_sessions').count} stations, at ${n(rate)} msg/s achieved (k6)`, `≤ ${n(T['station-gateway'].callResultP99Ms, 'ms')}`, `${n(p99, 'ms')} (${V(p99, 'le', T['station-gateway'].callResultP99Ms)}); p50 ${n(cr['p(50)'], 'ms')}; CALLERROR ${r.metric('ocpp_callerrors').count}`, 'measured', [r.file, r.envFile]);
+    add(`Gateway: CALLRESULT p99, ${r.metric('ws_sessions').count} stations, at ${n(rate)} msg/s achieved (k6)`, `≤ ${n(T['station-gateway'].callResultP99Ms, 'ms')}`, `${n(p99, 'ms')} (${V(p99, 'le', T['station-gateway'].callResultP99Ms)}); p50 ${n(cr['p(50)'], 'ms')}; CALLERROR ${r.metric('ocpp_callerrors').count}${r.metric('ocpp_calls_unanswered') ? `; unanswered CALLs ${r.metric('ocpp_calls_unanswered').count}` : ''}`, 'measured', [r.file, r.envFile]);
   }
 
   // telemetry-ingest

@@ -130,9 +130,9 @@ export function targetMetrics() {
   const g10k = tool('gateway-10k-connections.json');
   const gwRuns = k6List(/^k6-gateway-ws-/);
   // Rule: rate and p99 both come from the run with the highest achieved rate, whether or not its p99 met the target.
-  const gwBest = gwRuns.length && gwRuns.reduce((a, b) => (b.metric('ocpp_callresults').rate > a.metric('ocpp_callresults').rate ? b : a));
+  const gwBest = gwRuns.length && gwRuns.reduce((a, b) => (gatewayRate(b) > gatewayRate(a) ? b : a));
   if (g10k) add({ key: 'connections', service: 'station-gateway', metric: 'WebSocket connections', unit: '', target: T['station-gateway'].connections, op: 'ge', value: g10k.data.summary.peakConnections, sources: [g10k.file, TARGETS_FILE], setup: g10k.data.setup.gateway });
-  if (gwBest) add({ key: 'msgPerSec', service: 'station-gateway', metric: 'Messages per second', unit: '/s', target: T['station-gateway'].msgPerSec, op: 'ge', value: gwBest.metric('ocpp_callresults').rate, sources: [gwBest.file, TARGETS_FILE], setup: envLine(gwBest), note: gwBest.name });
+  if (gwBest) add({ key: 'msgPerSec', service: 'station-gateway', metric: 'Messages per second', unit: '/s', target: T['station-gateway'].msgPerSec, op: 'ge', value: gatewayRate(gwBest), sources: [gwBest.file, TARGETS_FILE], setup: envLine(gwBest), note: gwBest.name });
   if (gwBest) add({ key: 'callResultP99Ms', service: 'station-gateway', metric: 'CALLRESULT p99', unit: 'ms', target: T['station-gateway'].callResultP99Ms, op: 'le', value: gwBest.metric('ocpp_callresult_ms')['p(99)'], sources: [gwBest.file, TARGETS_FILE], setup: envLine(gwBest), note: gwBest.name });
 
   // telemetry-ingest
@@ -196,11 +196,22 @@ export function envSummary(runs) {
 }
 
 // Offered load of a gateway k6 run: each station keeps one CALL outstanding and sends at its set rate, so the offered
-// rate is stations x Hz (ws_sessions and the Hz in the file name, for example gateway-ws-1000st-1hz). Derived.
+// rate is stations x Hz. Newer runs write it into the summary (offeredMsgPerS); older ones carry the Hz in the file name
+// (for example gateway-ws-1000st-1hz). Derived.
 export function gatewayOfferedRate(run) {
-  const hz = Number(run.name.match(/(\d+)hz/)?.[1]);
+  if (typeof run.sum.offeredMsgPerS === 'number') return run.sum.offeredMsgPerS;
+  const hz = Number(run.name.match(/(\d+(?:\.\d+)?)hz/)?.[1]);
   const stations = run.metric('ws_sessions')?.count;
   return Number.isFinite(hz) && typeof stations === 'number' ? stations * hz : null;
 }
+// Achieved CALLRESULT rate of a gateway k6 run. The first version divided every CALLRESULT by the whole run, ramp included
+// (ocpp_callresults.rate, still the figure of the old files). The rewritten script counts only the steady window, in which
+// every station is connected (ocpp_callresults_steady over steadyWindowS).
+export function gatewayRate(run) {
+  const steady = run.metric('ocpp_callresults_steady')?.count;
+  if (typeof steady === 'number' && typeof run.sum.steadyWindowS === 'number') return steady / run.sum.steadyWindowS;
+  return run.metric('ocpp_callresults').rate;
+}
+export const gatewayRateBasis = (run) => (typeof run.sum.steadyWindowS === 'number' ? `steady window of ${run.sum.steadyWindowS} s` : 'whole run incl. ramp');
 
 export const SERVICE_ORDER =['station-gateway', 'telemetry-ingest', 'sessions', 'smart-charging', 'tariff', 'driver-api'];
