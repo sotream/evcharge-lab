@@ -6,7 +6,9 @@ import { type Harness, startHarness, waitFor } from './harness';
 
 let h: Harness;
 beforeAll(async () => {
-  h = await startHarness({ sites: 1, stationsPerSite: 3 });
+  // The background sweeper (200 ms by default) would race the tests that call sweepExpiredReservations and
+  // rejectUnconfirmedReservations themselves and assert how many rows each call handled. It never fires in this file.
+  h = await startHarness({ sites: 1, stationsPerSite: 3, env: { SWEEPER_INTERVAL_MS: '3600000' } });
 });
 afterAll(async () => {
   await h?.close();
@@ -32,7 +34,9 @@ describe('reservations (ADR 0005)', () => {
     const winnerId = ok[0]?.body.reservationId as number;
     await waitFor(() => h.sessionEvents.some((e) => e.type === 'reservation.created' && e.data.reservationId === winnerId));
     expect(h.sessionEvents.filter((e) => e.type === 'reservation.created' && e.data.connectorId === 1 && e.data.stationId === 'st-0001-001')).toHaveLength(1);
-    const reserveNow = await waitFor(() => h.commands.filter((c) => c.data.action === 'ReserveNow' && c.data.payload['reservationId'] === winnerId));
+    const isWinnerReserveNow = (c: (typeof h.commands)[number]) => c.data.action === 'ReserveNow' && c.data.payload['reservationId'] === winnerId;
+    await waitFor(() => h.commands.some(isWinnerReserveNow)); // waitFor treats [] as success, so wait on a boolean
+    const reserveNow = h.commands.filter(isWinnerReserveNow);
     expect(reserveNow).toHaveLength(1);
     expect(Date.parse(reserveNow[0]?.data.expiresAt ?? '') - Date.parse(reserveNow[0]?.occurredAt ?? '')).toBeLessThanOrEqual(31_000);
   });
