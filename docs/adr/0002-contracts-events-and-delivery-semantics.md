@@ -121,7 +121,7 @@ the smart-charging allocator, 1 s for tariff and 3 s for driver-api to downstrea
 - **CDC (Debezium) instead of a polling outbox.** It adds another JVM service. A single-leader
   poller gives sub-second latency at this volume. The relay polls every 50 ms. A LISTEN/NOTIFY wake-up was
   tried and removed, because the `NOTIFY` trigger serialised every commit (migration `0004_outbox_drop_notify.sql`,
-  README item 6).
+  finding 6 in docs/findings.md).
 
 ## Consequences
 

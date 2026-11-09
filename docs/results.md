@@ -1,0 +1,64 @@
+# Results
+
+The lab measures **one instance per service** on one machine, with all containers sharing one Docker VM, and derives the fleet size from it. The targets come from [`load/targets.json`](../load/targets.json), which is transcribed from [ADR 0000](adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, except the ADR 0000 rate rule for k6 throughput (within 0.1%, no dropped iteration, no failed request), so a missed target stays visible as missed. The machines are named in the setup note below.
+
+The numbers in the generated blocks (the targets table in the README, the charts on this page, the drills table in [`drills.md`](drills.md) and the findings table in [`findings.md`](findings.md)) and in [`metrics.md`](metrics.md) are read from raw files in `docs/load-output/` and `docs/drill-output/` by a script, labelled as measured or derived, and the targets that were missed stay visible as missed. The prose in [findings](findings.md) and [known limits](known-limits.md) also quotes numbers; those were observed during the build, and each one is labelled as measured (with its file), derived (with its formula), observed but not saved as a file, or a review scenario.
+
+## Measurement setup
+
+[ADR 0000](adr/0000-requirements-and-capacity.md) names a MacBook Air M1 as the intended machine. The raw files record two different setups, and they are not mixed into one series:
+
+- **k6 runs and benches of the earlier stages** (`docs/load-output/k6-*.env.json`): `darwin/arm64`, a Docker VM with 8 CPUs and 8.3 GB of memory (8,319,705,088 bytes), and the containers running during each run. None of these files records the laptop model, so which machine took them is not provable from the repository. `load/run.sh` now records it (`host.model`, `host.cpus`), but no k6 run has been repeated with it.
+- **23 drill runs** (every drill from `replica-lag` on: `replica-lag`, `kraft-quorum-loss`, the 24 h `station-offline-replay` of 20261108T190213Z, `consumer-rebalance`, `postgres-failover`, `backup-restore`, `reservation-invariant`): an Apple M4 Pro (Mac16,8; 12 CPUs, 24 GiB) with a Docker VM of 8 CPUs and 11.7 GiB (12,526,571,520 bytes), recorded in each `env.json`.
+- **14 older drill runs** (`gateway-instance-loss`, `kafka-broker-loss`, `reconnect-storm`, `slow-postgres`, `smart-charging-down` and the first two `station-offline-replay` runs) have no `env.json`; the machine is not recorded.
+
+The targets come from [`load/targets.json`](../load/targets.json), which is transcribed from ADR 0000.
+
+## How to read the verdicts
+
+The summary table is in the [README](../README.md#targets-at-a-glance); the full table is [`metrics.md`](metrics.md).
+
+Every verdict compares the measured value with the target, with no tolerance except the [ADR 0000](adr/0000-requirements-and-capacity.md#lab-targets-one-instance-macbook-air-m1-docker-compose) rate rule for k6 throughput. The **station gateway meets** its message-rate and CALLRESULT p99 targets in the newest series (`k6-gateway-ws-2000st-1.25hz`: three runs, 2,490 to 2,498 msg/s in a 60 s steady window with all 2,000 stations connected, p99 223 to 253 ms, no CALLERROR, no unanswered CALL; the first run is the charted one, see its [`NOTE.md`](load-output/gateway-ws-2000st-1.25hz-repeats-20261109T122949Z/NOTE.md)). The two earlier runs (1,000 and 2,000 stations at 1 msg/s, an earlier script that could not reach the target by construction, an 8.3 GB Docker VM and an earlier build) missed and stay in the metrics table as missed; this series does not show which of the three changes moved the numbers (see [Known limits](known-limits.md)). The gateway also holds 10,000 WebSocket connections. The driver-api read rate (955.59 against 1,000) is a miss: 331 iterations were dropped. The sessions (199.99 against 200), smart-charging (999.97 against 1,000) and tariff (1,999.97 against 2,000) k6 rates are a fraction below their targets only because k6 divides by the whole run duration; those runs dropped no iteration and had no failed request, so they meet their targets under the rate rule and are marked "(rate rule)". The notes under the table in [`metrics.md`](metrics.md) explain each. The telemetry-ingest sustained rate at the target offered rate (2,471.23 against 2,500) is also a miss. The closed-loop saturation figures in the metrics table (for example 10,507.2 allocations/s and 14,399.8 quotes/s) are best-case benchmarks, not the charted verdicts.
+
+## Charts
+
+The chart shows each measured value divided by its target. Every chart is an SVG generated from the raw files by [`scripts/charts/`](../scripts/charts/README.md) (`node scripts/charts/build.mjs`), works in GitHub light and dark themes, and carries a footer naming its source files and the measurement setup. The headline charts are below; the drill timelines are in [`drills.md`](drills.md) and the telemetry storage chart is in [`metrics.md`](metrics.md).
+
+<!-- charts:start (generated by scripts/charts/build.mjs) -->
+#### Target versus measured, per service
+
+One bar per metric: the measured value divided by the target in `load/targets.json`. Bars are red where the measured value misses its target (ADR 0000, rate rule for k6 throughput): telemetry-ingest: Sustained rows per second (2,500 offered); driver-api: Read requests per second (GET /v1/sites).
+
+![Target versus measured, per service](img/targets-vs-measured.svg)
+
+#### Throughput and p99 per service
+
+Achieved rate and p99 latency from the k6 summaries.
+
+![Throughput and p99 per service](img/throughput-p99.svg)
+
+#### sessions: latency versus offered rate
+
+4 constant-arrival-rate runs against `sessions`.
+
+![sessions: latency versus offered rate](img/sessions-rate-sweep.svg)
+
+#### WebSocket connections per gateway instance
+
+The 10,000-connection run (one native gateway process) and the k6 runs against one gateway container.
+
+![WebSocket connections per gateway instance](img/gateway-connections.svg)
+
+#### telemetry-ingest: COPY versus row-by-row
+
+Sustained rate and durable lag against the offered rate. Hollow markers did not keep up.
+
+![telemetry-ingest: COPY versus row-by-row](img/telemetry-ingest.svg)
+
+#### smart-charging: allocation under the site cap
+
+Drawn power against the sum of the site caps through the allocator outage drill, before, during and after.
+
+![smart-charging: allocation under the site cap](img/smart-charging-cap.svg)
+<!-- charts:end -->
+

@@ -1,22 +1,21 @@
 # scripts/charts
 
-Plain Node ESM (Node 26, no dependencies). It writes every chart as an SVG string and generates `docs/metrics.md`, `docs/drills.md` and several blocks of the root `README.md` from the raw measurement files and the repository itself. No number is typed into a chart: each value is read from a file in `docs/load-output/`, `docs/drill-output/` or `load/targets.json`.
+Plain Node ESM (Node 26, no dependencies). It writes every chart as an SVG string and generates `docs/metrics.md`, `docs/drills.md` and the generated blocks of `README.md`, `docs/results.md` and `docs/findings.md` from the raw measurement files and the repository itself. No number is typed into a chart: each value is read from a file in `docs/load-output/`, `docs/drill-output/` or `load/targets.json`.
 
 ```sh
 node scripts/charts/build.mjs
 ```
 
-The command rewrites `docs/img/*.svg` (except the hand-made `architecture.svg`), deletes generated charts whose input has disappeared, writes two documents and replaces the text between these markers in `README.md`:
+The command rewrites `docs/img/*.svg` (except the hand-made `architecture.svg`), deletes generated charts whose input has disappeared, writes two documents and replaces the text between these markers (the file is named in each item):
 
 - `docs/metrics.md`: the full metrics table (metric, target, value, label, source file, formula) with the notes on individual rows, and the telemetry storage chart.
-- `docs/drills.md`: every drill run, including failed and inconclusive ones, with its result, check failures, links to `result.json` and `NOTE.md`, and its timeline chart.
-- `<!-- stats:start -->` to `<!-- stats:end -->`: the stat tiles (services, ADRs, drill scripts, drill runs passed, findings fixed), counted from `services/`, `docs/adr/`, `drills/`, `docs/drill-output/` and the findings in the README.
-- `<!-- glance:start ... -->` to `<!-- glance:end -->`: "Targets at a glance", one row per target in `load/targets.json` with the measured value, the verdict (met, missed, not tested) and the source file.
-- `<!-- charts:start ... -->` to `<!-- charts:end -->`: the headline charts with captions.
-- `<!-- drills:start ... -->` to `<!-- drills:end -->`: one row per drill (what it breaks, runs passed of total, latest run verdict, link to its timeline in `docs/drills.md`). The description is the first sentence of the comment header of `drills/<name>.sh`.
-- `<!-- findings:start ... -->` to `<!-- findings:end -->`: the findings table (number, title, found by, link). It is built from the `<details id="finding-N">` items in the README; "found by" is classified from each item's "Found by" line as review, k6, drill or manual check.
+- `docs/drills.md`: a summary table (one row per drill: what it breaks, runs passed of total, latest run verdict, link to its timeline) and every drill run, including failed and inconclusive ones, with its result, check failures, links to `result.json` and `NOTE.md`, and its timeline chart.
+- `README.md`, `<!-- stats:start -->` to `<!-- stats:end -->`: the stat tiles (services, ADRs, drill scripts, drill runs passed, findings fixed), counted from `services/`, `docs/adr/`, `drills/`, `docs/drill-output/` and the findings in `docs/findings.md`.
+- `README.md`, `<!-- glance:start ... -->` to `<!-- glance:end -->`: "Targets at a glance", one row per target in `load/targets.json` with the measured value, the verdict (met, missed, not tested) and the source file.
+- `docs/results.md`, `<!-- charts:start ... -->` to `<!-- charts:end -->`: the headline charts with captions.
+- `docs/findings.md`, `<!-- findings:start ... -->` to `<!-- findings:end -->`: the findings table (number, title, found by, link). It is built from the `<details id="finding-N">` items in `docs/findings.md`; "found by" is classified from each item's "Found by" line as review, k6, drill or manual check.
 
-The tests (`node --test scripts/charts/`, also run by `make check`) check the counts, the targets table, the drills table and that none of these outputs is stale.
+The tests (`node --test scripts/charts/`, also run by `make check`) check the counts, the targets table, the findings table and that none of these outputs is stale.
 
 To read drills from another checkout, set `DRILL_OUTPUT_DIR=/path/to/docs/drill-output`. The source footers still name `docs/drill-output/<run>/`.
 
@@ -24,7 +23,7 @@ To read drills from another checkout, set `DRILL_OUTPUT_DIR=/path/to/docs/drill-
 
 | File | Purpose |
 |---|---|
-| `build.mjs` | entry point: writes the SVGs, the two documents and the README blocks |
+| `build.mjs` | entry point: writes the SVGs, the two documents and the generated blocks |
 | `charts.mjs` | one function per chart; `ALL()` lists them |
 | `data.mjs` | readers for k6 summaries, `.env.json` records, tool outputs and drill directories, plus the target-versus-measured metric model |
 | `metrics-table.mjs` | the full metrics table (`docs/metrics.md`) |
