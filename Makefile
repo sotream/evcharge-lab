@@ -17,7 +17,7 @@ check: install contracts topics-sync prom-check history-test lint build typechec
 	@echo "✔ make check passed"
 
 install:
-	pnpm install --frozen-lockfile=false --reporter=silent
+	pnpm install --frozen-lockfile --reporter=silent
 
 contracts:
 	pnpm --filter @evcharge/contracts build

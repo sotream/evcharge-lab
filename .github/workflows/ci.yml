@@ -16,7 +16,7 @@ concurrency:
 jobs:
   # `make check` is the source of truth (ADR 0020): install, contracts drift, topic sync, promtool rule tests,
   # lint, build, typecheck, unit tests, infra up, integration tests, go vet, golangci-lint, go test -race.
-  # This job name is the required status check of the protect-main ruleset.
+  # This job name is the required status check of the main protection ruleset.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 45

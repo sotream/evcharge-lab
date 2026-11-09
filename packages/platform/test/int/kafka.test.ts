@@ -144,6 +144,31 @@ describe('kafka producer + consumer', () => {
     expect(sample(text, 'kafka_consumer_messages_total', { topic: t, outcome: 'dlq' })).toBe(3);
   });
 
+  it('dead-letters a record the database rejects instead of blocking the partition (default maxAttempts)', async () => {
+    const t = await topic(1);
+    const attempts: number[] = [];
+    const ok: string[] = [];
+    const c = consumer({
+      topics: [t],
+      retryBackoffMs: 1,
+      retryBackoffMaxMs: 5,
+      handler: async (e, ctx) => {
+        if (e.data.gatewayInstance === 'gw-poison') {
+          attempts.push(ctx.attempt);
+          throw Object.assign(new Error('value out of range for type integer'), { code: '22003' });
+        }
+        ok.push(e.data.gatewayInstance);
+      },
+    });
+    await c.start();
+    await producer.sendEnvelope(t, makeEnvelope('station.connected', 'CP', { stationId: 'CP', gatewayInstance: 'gw-poison' }, 'test'));
+    await producer.sendEnvelope(t, connected('CP', 1));
+    await waitFor(() => ok.length === 1, { timeoutMs: 30_000 });
+    expect(attempts).toEqual([1, 2, 3, 4, 5]);
+    const dlq = await readRaw(`${t}.dlq`, 1);
+    expect(dlq[0]?.headers).toMatchObject({ 'dlq-reason': 'handler', 'dlq-attempts': '5' });
+  });
+
   it('commits only after success: unfinished work is redelivered to the next member', async () => {
     const t = await topic(1);
     const groupId = uniq('grp-redeliver');

@@ -8,6 +8,18 @@ import { extractTraceContext, inSpan } from '../telemetry/propagation';
 import { errorMessage, fullJitterBackoff, sleep } from '../util';
 import { createProducer, type KafkaProducer } from './producer';
 
+/** Tries before a record whose handler fails with a Postgres data error goes to the DLQ. */
+const DATA_ERROR_ATTEMPTS = 5;
+
+/** SQLSTATE class 22 (data exception), 23 (integrity constraint violation) or 54 (program limit exceeded), on the error or its cause. */
+export function isDataError(err: unknown): boolean {
+  for (let e = err, depth = 0; e && typeof e === 'object' && depth < 4; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && /^(22|23|54)[0-9A-Z]{3}$/.test(code)) return true;
+  }
+  return false;
+}
+
 export interface MessageContext {
   topic: string;
   partition: number;
@@ -32,7 +44,9 @@ export interface ConsumerOptions<S extends z.ZodType> {
    * Handler attempts before the message goes to `<topic>.dlq`. Default: unlimited. A handler error is
    * usually a dependency outage (DB, broker), so the partition blocks and retries with backoff
    * (the lag alert fires) instead of dead-lettering real events. Undecodable messages always go to
-   * the DLQ at once.
+   * the DLQ at once. A handler error that carries a Postgres data-error SQLSTATE (class 22 or 23, or 54 limits exceeded)
+   * is a property of the record, not of the dependency: retrying cannot help, so it is dead-lettered after
+   * DATA_ERROR_ATTEMPTS tries (a few, because a unique violation can be a lost race that the next try wins).
    */
   maxAttempts?: number;
   retryBackoffMs?: number;
@@ -311,7 +325,8 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
 
     const parent = extractTraceContext(m.headers);
     let lastErr: unknown;
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+    let limit = this.maxAttempts;
+    for (let attempt = 1; attempt <= limit; attempt++) {
       if (this.stopping && attempt > 1) return; // not committed: redelivered after restart
       try {
         await inSpan(`${topic} process`, { kind: SpanKind.CONSUMER, parent, attributes: { 'messaging.system': 'kafka', 'messaging.destination.name': topic, 'messaging.consumer.group.name': group, 'messaging.kafka.offset': Number(offset), attempt } }, () =>
@@ -325,10 +340,11 @@ export class KafkaConsumer<S extends z.ZodType = z.ZodType> {
         lastErr = err;
         this.mMessages.inc({ group, topic, outcome: 'error' });
         this.opts.logger?.warn({ topic, partition, offset: String(offset), attempt, err: errorMessage(err) }, 'kafka handler failed');
-        if (attempt < this.maxAttempts) await sleep(fullJitterBackoff(attempt, this.opts.retryBackoffMs ?? 100, this.opts.retryBackoffMaxMs ?? 30_000), this.stopCtl.signal);
+        if (isDataError(err)) limit = Math.min(limit, DATA_ERROR_ATTEMPTS);
+        if (attempt < limit) await sleep(fullJitterBackoff(attempt, this.opts.retryBackoffMs ?? 100, this.opts.retryBackoffMaxMs ?? 30_000), this.stopCtl.signal);
       }
     }
-    if (await this.deadLetter(m, headers, 'handler', lastErr, this.maxAttempts)) {
+    if (await this.deadLetter(m, headers, 'handler', lastErr, limit)) {
       this.mMessages.inc({ group, topic, outcome: 'dlq' });
       await this.commit(m);
     }
