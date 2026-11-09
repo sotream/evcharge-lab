@@ -84,7 +84,7 @@ type SeriesQuery struct {
 }
 
 // ParseSeriesQuery validates from/to (RFC 3339, default the last hour) and
-// step (Go duration, whole minutes, default 1m, at most MaxPoints buckets).
+// step (Go duration, whole minutes, default 1m widened to fit MaxPoints, at most MaxPoints buckets).
 func ParseSeriesQuery(from, to, step string, now time.Time) (SeriesQuery, error) {
 	q := SeriesQuery{To: now, Step: time.Minute}
 	var err error
@@ -103,6 +103,10 @@ func ParseSeriesQuery(from, to, step string, now time.Time) (SeriesQuery, error)
 		if q.Step, err = time.ParseDuration(step); err != nil {
 			return q, fmt.Errorf("step: %w", err)
 		}
+	} else if q.From.Before(q.To) && q.To.Sub(q.From)/q.Step > MaxPoints {
+		// No step asked for: widen it to the smallest whole number of minutes that fits MaxPoints, so a session longer
+		// than 24 h still gets an answer. An explicit step that is too small stays an error.
+		q.Step = ((q.To.Sub(q.From) + MaxPoints*time.Minute - 1) / (MaxPoints * time.Minute)) * time.Minute
 	}
 	switch {
 	case q.Step < time.Minute || q.Step%time.Minute != 0:

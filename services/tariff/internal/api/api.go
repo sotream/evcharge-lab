@@ -73,6 +73,11 @@ func (a *API) quote(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "validation", "tariffId is required")
 		return
 	}
+	if req.EnergyWh == nil || req.StartedAt.IsZero() || req.StoppedAt.IsZero() {
+		a.quotes.WithLabelValues(req.TariffID, "invalid").Inc()
+		httpx.Error(w, http.StatusBadRequest, "validation", "startedAt, stoppedAt and energyWh are required")
+		return
+	}
 	t, err := a.Tariffs.Get(r.Context(), req.TariffID)
 	if err != nil {
 		a.writeLoadError(w, r, req.TariffID, err)
@@ -85,7 +90,7 @@ func (a *API) quote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
-	res, err := pricing.Quote(v, pricing.Request{StartedAt: req.StartedAt, StoppedAt: req.StoppedAt, EnergyWh: req.EnergyWh})
+	res, err := pricing.Quote(v, pricing.Request{StartedAt: req.StartedAt, StoppedAt: req.StoppedAt, EnergyWh: *req.EnergyWh})
 	a.calc.Observe(time.Since(start).Seconds())
 	if err != nil {
 		if errors.Is(err, pricing.ErrInvalidRequest) {

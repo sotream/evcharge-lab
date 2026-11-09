@@ -100,7 +100,7 @@ type QuoteReq struct {
 	TariffID  string    `json:"tariffId"`
 	StartedAt time.Time `json:"startedAt"`
 	StoppedAt time.Time `json:"stoppedAt"`
-	EnergyWh  int64     `json:"energyWh"`
+	EnergyWh  *int64    `json:"energyWh"` // pointer: a missing value must be a 400, not a free session
 }
 
 type QuoteLine struct {
