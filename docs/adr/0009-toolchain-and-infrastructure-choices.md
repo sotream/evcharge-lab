@@ -27,7 +27,7 @@ versions current on 2026-11-08.
 | Postgres (Go) | pgx v5 | latest |
 | Broker | Apache Kafka, KRaft, 3 combined broker+controller nodes, 512 MB heap each (ADR 0012) | 4.3.1 |
 | OLTP database | Postgres | 18.6 |
-| Telemetry database | TimescaleDB on Postgres 18, separate instance (ADR 0008) | 2.24.0-pg18 |
+| Telemetry database | TimescaleDB on Postgres 18, separate instance (ADR 0008) | 2.31.0-pg18 |
 | Cache, registry | Redis | 8.10.3 |
 | Edge LB | HAProxy | 3.4.7 |
 | Tracing | OpenTelemetry → Jaeger v2 (OTLP/HTTP) | 2.23.0 |
