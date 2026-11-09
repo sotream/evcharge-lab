@@ -210,9 +210,9 @@ The failure drills in [`drills/`](drills/) break one component while the simulat
 | `reconnect-storm` | whole fleet disconnects at once and reconnects per the ADR 0003 policy (first attempt U(0,10 s), then full-jitter backoff) | 1 of 1 | ✅ passed | [20261108T120311Z](docs/drills.md#reconnect-storm-20261108t120311z) |
 | `replica-lag` | the sessions read replica stops replaying WAL (pg_wal_replay_pause) | 1 of 3 | ✅ passed | [20261108T183638Z](docs/drills.md#replica-lag-20261108t183638z) |
 | `reservation-invariant-none` | no drill script | 1 of 1 | ✅ passed | [20261108T205643Z](docs/drills.md#reservation-invariant-none-20261108t205643z) |
-| `reservation-invariant-none-mutated` | no drill script | 1 of 1 | ✅ passed | [20261108T205511Z](docs/drills.md#reservation-invariant-none-mutated-20261108t205511z) |
-| `reservation-invariant-pause` | no drill script | 1 of 1 | ✅ passed | [20261108T205154Z](docs/drills.md#reservation-invariant-pause-20261108t205154z) |
-| `reservation-invariant-restart` | no drill script | 1 of 1 | ✅ passed | [20261108T205335Z](docs/drills.md#reservation-invariant-restart-20261108t205335z) |
+| `reservation-invariant-none-mutated` | no drill script | 2 of 2 | ✅ passed | [20261109T090303Z](docs/drills.md#reservation-invariant-none-mutated-20261109t090303z) |
+| `reservation-invariant-pause` | no drill script | 2 of 2 | ✅ passed | [20261109T090014Z](docs/drills.md#reservation-invariant-pause-20261109t090014z) |
+| `reservation-invariant-restart` | no drill script | 2 of 2 | ✅ passed | [20261109T090135Z](docs/drills.md#reservation-invariant-restart-20261109t090135z) |
 | `slow-postgres` | the telemetry Postgres becomes slow (CPU throttled to 0.05 cores) | 1 of 4 | ✅ passed | [20261108T162708Z](docs/drills.md#slow-postgres-20261108t162708z) |
 | `smart-charging-down` | the Go allocator is down | 1 of 1 | ✅ passed | [20261108T114310Z](docs/drills.md#smart-charging-down-20261108t114310z) |
 | `station-offline-replay` | stations lose their network for up to 24 h of simulated time while charging | 2 of 3 | ✅ passed | [20261108T190213Z](docs/drills.md#station-offline-replay-20261108t190213z) |
