@@ -395,3 +395,29 @@ func TestPoisonRecordIsBisectedAndDeadLettered(t *testing.T) {
 		t.Fatalf("dlq-reason = %q", reason)
 	}
 }
+
+func TestLateReadingReachesRollup(t *testing.T) {
+	h := newHarness(t, 1)
+	ingestPool, err := ingest.ConnectIngestPool(context.Background(), h.dsn, "late-test", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(ingestPool.Close)
+	late := ingest.NewLateRefresher(ingestPool, time.Minute, quietLogger())
+	h.start(ingest.Config{Late: late}, nil)
+	station := testinfra.Unique("IT-")
+	at := time.Now().UTC().Add(-5 * time.Hour).Truncate(time.Minute).Add(10 * time.Second)
+	h.produce(testinfra.MeterRecord(h.topic, testinfra.Reading(station, 1, at, 1000, true)))
+	testinfra.Eventually(t, 30*time.Second, "late row stored", func() bool { return h.count("station_id = $1", station) == 1 })
+	// Note is called right after the commit; one refresher tick then materializes the bucket.
+	testinfra.Eventually(t, 10*time.Second, "rollup has the bucket", func() bool {
+		if err := late.Flush(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		if err := h.pool.QueryRow(context.Background(), `SELECT coalesce(sum(samples), 0) FROM power_1m WHERE bucket = $1 AND station_id = $2`, at.Truncate(time.Minute), station).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n == 1
+	})
+}

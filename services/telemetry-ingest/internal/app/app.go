@@ -99,10 +99,11 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger, o Options) error {
 	if err != nil {
 		return err
 	}
+	late := ingest.NewLateRefresher(ingestPool, time.Minute, log)
 	pipe, err := ingest.New(ingest.Config{
 		Brokers: cfg.KafkaBrokers, Group: cfg.Group, Topic: cfg.Topic, ClientID: cfg.ServiceName,
 		FlushRows: cfg.FlushRows, FlushInterval: cfg.FlushInterval, MaxBufferedRows: cfg.MaxBufferedRows,
-		Logger: log,
+		Logger: log, Late: late,
 	}, &ingest.CopyWriter{Pool: ingestPool}, &ingest.RedisLatest{Client: rdb}, m)
 	if err != nil {
 		return err
@@ -119,6 +120,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger, o Options) error {
 	opts := []server.Option{
 		server.WithLogger(log), server.WithHealth(hc), server.WithMetrics(reg),
 		server.WithRunner("ingest", pipe.Run),
+		server.WithRunner("late-rollup", func(ctx context.Context) error { late.Run(ctx); return nil }),
 		// Closers run in reverse: pipeline (leave group), redis, pools, tracer.
 		server.WithCloser("tracer", shutdownTracing),
 		server.WithCloser("postgres-query", pg.Closer(queryPool)),
