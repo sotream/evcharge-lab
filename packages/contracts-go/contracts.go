@@ -101,6 +101,15 @@ type QuoteReq struct {
 	StartedAt time.Time `json:"startedAt"`
 	StoppedAt time.Time `json:"stoppedAt"`
 	EnergyWh  *int64    `json:"energyWh"` // pointer: a missing value must be a 400, not a free session
+	// EnergyProfile is the station's cumulative energy register during the session (optional). With at least two
+	// usable samples the energy is split between time-of-use windows by metered energy instead of by time.
+	EnergyProfile []EnergySample `json:"energyProfile,omitempty"`
+}
+
+// EnergySample is one reading of a cumulative energy register.
+type EnergySample struct {
+	At       time.Time `json:"at"`
+	EnergyWh int64     `json:"energyWh"`
 }
 
 type QuoteLine struct {

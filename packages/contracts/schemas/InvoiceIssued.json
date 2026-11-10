@@ -34,6 +34,9 @@
           "format": "uuid",
           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
         },
+        "invoiceNumber": {
+          "type": "string"
+        },
         "sessionId": {
           "type": "string",
           "format": "uuid",
@@ -69,6 +72,49 @@
             "amountMinor",
             "currency"
           ]
+        },
+        "net": {
+          "type": "object",
+          "properties": {
+            "amountMinor": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 3
+            }
+          },
+          "required": [
+            "amountMinor",
+            "currency"
+          ]
+        },
+        "vat": {
+          "type": "object",
+          "properties": {
+            "amountMinor": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "currency": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 3
+            }
+          },
+          "required": [
+            "amountMinor",
+            "currency"
+          ]
+        },
+        "vatRateBp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "lines": {
           "type": "array",

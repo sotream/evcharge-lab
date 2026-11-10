@@ -43,6 +43,8 @@ type Config struct {
 	// DLQSuffix is appended to the topic for undecodable records (default ".dlq").
 	DLQSuffix string
 	Logger    *slog.Logger
+	// Late, if set, is told the time range of rows older than LateAfter after every durable batch.
+	Late LateNoter
 	// OnFlushed, if set, is called after every durable flush (bench hook).
 	OnFlushed func(rows []Row, inserted int64, durableAt time.Time)
 	// Opts are appended to the franz-go client options.
@@ -502,6 +504,7 @@ func (p *Pipeline) persist(ctx context.Context, batch []item) error {
 	}
 
 	p.commit(ctx, batch)
+	p.noteLate(rows, durableAt)
 
 	if p.latest != nil {
 		if err := p.latest.WriteLatest(ctx, rows); err != nil {
@@ -519,6 +522,31 @@ func (p *Pipeline) persist(ctx context.Context, batch []item) error {
 		p.cfg.OnFlushed(rows, inserted, durableAt)
 	}
 	return nil
+}
+
+// noteLate reports the time range of rows older than LateAfter so the 1-minute
+// rollup can be refreshed for them (the policy window no longer covers them).
+func (p *Pipeline) noteLate(rows []Row, now time.Time) {
+	if p.cfg.Late == nil {
+		return
+	}
+	cutoff := now.Add(-LateAfter)
+	var lo, hi time.Time
+	for i := range rows {
+		t := rows[i].Time
+		if !t.Before(cutoff) {
+			continue
+		}
+		if lo.IsZero() || t.Before(lo) {
+			lo = t
+		}
+		if t.After(hi) {
+			hi = t
+		}
+	}
+	if !lo.IsZero() {
+		p.cfg.Late.Note(lo, hi)
+	}
 }
 
 // commit commits past the last record of every partition in the batch. A

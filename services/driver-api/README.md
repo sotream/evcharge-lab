@@ -104,3 +104,9 @@ are required. Optional: `JWT_PREVIOUS_SECRETS`, `ACCESS_TOKEN_TTL_S`, `REFRESH_T
 pnpm --filter @evcharge/driver-api test:unit   # JWT, scrypt, rate limiter, config, cache
 pnpm --filter @evcharge/driver-api test:int    # needs Postgres and Redis (make infra-up); stub sessions/billing/telemetry
 ```
+
+## Account deletion (`DELETE /v1/me`)
+
+Driver JWT and an `idempotency-key` are required. The call asks sessions to block the driver's idTag (409 `active_session` while a session is Active or Stopping), asks billing to drop the stored card token and the tokens of settled sagas, then deletes the credentials and refresh tokens here. It answers 204 and can be repeated safely.
+
+Invoices, sessions and billing records are **not** deleted: they are kept for the legal retention period (ADR 0000, "Data volume"), still keyed by the opaque `driver_id` and no longer linked to an email or a working idTag.

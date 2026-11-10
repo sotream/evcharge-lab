@@ -90,7 +90,7 @@ func (a *API) quote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
-	res, err := pricing.Quote(v, pricing.Request{StartedAt: req.StartedAt, StoppedAt: req.StoppedAt, EnergyWh: *req.EnergyWh})
+	res, err := pricing.Quote(v, pricing.Request{StartedAt: req.StartedAt, StoppedAt: req.StoppedAt, EnergyWh: *req.EnergyWh, EnergyProfile: req.EnergyProfile})
 	a.calc.Observe(time.Since(start).Seconds())
 	if err != nil {
 		if errors.Is(err, pricing.ErrInvalidRequest) {

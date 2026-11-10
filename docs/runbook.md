@@ -18,6 +18,23 @@ checks, the action, and the drill in `drills/` that rehearses it. Raw drill outp
 `make check` (through `make infra-up`) stops the application containers before the integration tests. After `make infra-up` or `make check`, run `docker compose up -d` to bring the application containers back. The tests share Redis
 and Kafka with the stack, and live stations would claim the same routes. Infra keeps running.
 
+**TLS on the station edge.** `make infra-up` (or `make certs`) runs `infra/haproxy/gen-certs.sh`, which creates a lab CA and a server certificate for `station-lb` and `localhost` in `infra/haproxy/certs/` (git-ignored, generated once). HAProxy serves `wss` on `:8443` (host port `28443`); the simulator connects to `wss://station-lb:8443/ocpp` and trusts the lab CA through `NODE_EXTRA_CA_CERTS`. Plain `ws` on `:8080` (host `28080`) stays for load tests only. Check with `openssl s_client -connect localhost:28443 -CAfile infra/haproxy/certs/ca.pem </dev/null | grep 'Verify return code'`. Production uses real certificates and OCPP security profile 2 (TLS plus Basic auth, which the gateway already checks) or 3 (client certificates).
+
+**Configuration added by the production-readiness work** (defaults suit the lab):
+
+| Service | Key | Default | What an operator needs to know |
+|---|---|---|---|
+| sessions | `STALE_SESSION_AFTER_H` | `48` | A session with no StopTransaction for this long is closed as `StaleClosed` with energy 0 and flag `stale`; billing holds it for review (`GET /internal/sagas/parked` on billing, then `POST /internal/sagas/:id/resume` with `{"acceptEnergy": true}` once the real energy is settled). Keep it above the stations' offline replay window (24 h). |
+| sessions | `STOP_ON_AUTH_DECLINE` | `true` | `billing.payment-failed` with step `authorize` and a decline reason sends RemoteStop. `psp_unavailable` and `no_payment_method` never do. Counter `sessions_stopped_on_auth_decline_total`. Set `false` to only record the decline. |
+| sessions | `PROFILE_FAILURES_TO_ALERT` | `3` | Consecutive `Rejected` SetChargingProfile results per session before `sessions_profile_noncompliant_total{site_id}` rises and `StationIgnoresChargingProfile` fires. |
+| sessions | `PROFILE_FAILURES_TO_STOP` | `0` | `0` never stops; a positive value sends RemoteStop at that many rejections. |
+| billing | `TOKEN_ENC_KEY` | none (required; compose sets a lab value) | 32 bytes, base64 (`openssl rand -base64 32`). Always required, there is no built-in key. Changing it makes stored tokens unreadable: there is no rotation yet. Values written before encryption (no `v1:` prefix) are still read. |
+| billing | `TELEMETRY_URL` | unset (set in compose) | Source of the meter profile for time-of-use pricing. Unset or unreachable means time-weighted pricing; pricing never waits more than 2 s for it. |
+
+Migrations that come with these changes: sessions `0005_energy_flag`, `0006_signed_meter_data`, `0007_profile_failures`. A
+station that keeps being rejected shows up as `StationIgnoresChargingProfile`; check the station's firmware for
+SetChargingProfile support before setting `PROFILE_FAILURES_TO_STOP`.
+
 Dashboards are Grafana on `localhost:23000`. Traces are in Jaeger on `localhost:26686`. The Jaeger store is
 bounded: `infra/jaeger/config.yaml` keeps at most 20000 traces in memory and the container has `mem_limit: 400m`, so
 old traces disappear under load. Without the bound it grew to 864 MB even at 10% sampling and filled the VM swap
@@ -54,7 +71,7 @@ Grafana provisions six dashboards in the `evcharge` folder from `infra/grafana/d
 ### Alerts and recording rules
 
 The signals above are evaluated continuously by the rules in `infra/prometheus/rules/` (ADR 0014).
-Firing alerts are visible at `localhost:29090/alerts`; there is no Alertmanager, so nothing pages.
+Firing alerts are visible at `localhost:29090/alerts`. Prometheus sends them to Alertmanager (`localhost:29094`, config `infra/alertmanager/alertmanager.yml`), which groups them; the lab receiver `lab-log` delivers nowhere because a lab has nobody to page. To notify someone, add a `slack_configs` or `pagerduty_configs` block to the receiver (commented examples are in the file), check it with `make prom-check` (it runs `amtool check-config`) and run `docker compose restart alertmanager`. `ServiceDown` (`up == 0` for 1 minute, critical) fires for any scrape target that stops answering.
 Every alert carries a `severity` label and a `runbook` annotation that points at this file.
 
 | Alert group | Alerts | Where to look |
@@ -268,7 +285,7 @@ Use this to take the generator off the stack's machine (for example a MacBook Ai
 ## Known production gaps (lab simplifications)
 
 - **Service authentication:** a shared internal token between services instead of mTLS (ADR 0010).
-- **Station security:** OCPP security profile 1 (Basic auth) instead of TLS client certificates
+- **Station security:** OCPP security profile 2 (TLS plus Basic auth, lab CA); no client certificates, no production PKI
   (ADR 0003).
 - **Durability:** one primary with an asynchronous replica: a primary failure can lose acknowledged commits (measured in ADR 0018), so RPO 0 holds only with a synchronous standby, which production
   needs (ADR 0001, ADR 0018).

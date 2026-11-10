@@ -14,10 +14,14 @@ interface InvoiceRow {
   currency: string;
   issued_at: Date;
   state: string;
+  invoice_number: string | null;
+  net_minor: number | null;
+  vat_minor: number | null;
+  vat_rate_bp: number | null;
 }
 
 const SELECT = `
-  SELECT r.invoice_id, r.session_id, r.driver_id, i.total_minor, i.currency, r.issued_at, s.state
+  SELECT r.invoice_id, r.session_id, r.driver_id, i.total_minor, i.currency, r.issued_at, s.state, i.invoice_number, i.net_minor, i.vat_minor, i.vat_rate_bp
     FROM invoice_registry r
     JOIN invoices i ON i.invoice_id = r.invoice_id AND i.issued_at = r.issued_at
     JOIN billing_sagas s ON s.session_id = r.session_id`;
@@ -29,6 +33,12 @@ const view = (r: InvoiceRow): InvoiceView => ({
   status: invoiceStatus(r.state),
   total: { amountMinor: r.total_minor, currency: r.currency },
   issuedAt: r.issued_at.toISOString(),
+  ...(r.invoice_number !== null && { invoiceNumber: r.invoice_number }),
+  ...(r.net_minor !== null && r.vat_minor !== null && r.vat_rate_bp !== null && {
+    net: { amountMinor: r.net_minor, currency: r.currency },
+    vat: { amountMinor: r.vat_minor, currency: r.currency },
+    vatRateBp: r.vat_rate_bp,
+  }),
 });
 
 export class InvoiceReader {
@@ -47,7 +57,7 @@ export class InvoiceReader {
 
   async get(invoiceId: string): Promise<InvoiceDetail | undefined> {
     const { rows } = await this.pool.query<InvoiceRow & { energy_wh: string; started_at: Date; stopped_at: Date; tariff_id: string }>(
-      `SELECT r.invoice_id, r.session_id, r.driver_id, i.total_minor, i.currency, r.issued_at, s.state, i.energy_wh, i.started_at, i.stopped_at, i.tariff_id
+      `SELECT r.invoice_id, r.session_id, r.driver_id, i.total_minor, i.currency, r.issued_at, s.state, i.invoice_number, i.net_minor, i.vat_minor, i.vat_rate_bp, i.energy_wh, i.started_at, i.stopped_at, i.tariff_id
          FROM invoice_registry r
          JOIN invoices i ON i.invoice_id = r.invoice_id AND i.issued_at = r.issued_at
          JOIN billing_sagas s ON s.session_id = r.session_id

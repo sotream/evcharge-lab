@@ -56,5 +56,7 @@ func TestAllocateMatchesSchema(t *testing.T) {
 
 func TestQuoteMatchesSchema(t *testing.T) {
 	validate(t, "QuoteReq", QuoteReq{TariffID: "std", StartedAt: time.Now().UTC(), StoppedAt: time.Now().UTC(), EnergyWh: new(int64)})
+	validate(t, "QuoteReq", QuoteReq{TariffID: "tou", StartedAt: time.Now().UTC(), StoppedAt: time.Now().UTC(), EnergyWh: new(int64),
+		EnergyProfile: []EnergySample{{At: time.Now().UTC(), EnergyWh: 0}, {At: time.Now().UTC().Add(time.Minute), EnergyWh: 120}}})
 	validate(t, "QuoteRes", QuoteRes{TariffID: "std", Currency: "EUR", Lines: []QuoteLine{{Kind: "energy", Description: "d", Quantity: 1, Unit: "kWh", AmountMinor: 35}}, TotalMinor: 35})
 }

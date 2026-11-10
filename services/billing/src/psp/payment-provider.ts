@@ -36,10 +36,20 @@ export interface ReleaseRequest {
   authorizationKey?: string;
 }
 
+export interface RefundRequest {
+  idempotencyKey: string;
+  /** The capture to refund against. */
+  pspReference: string;
+  amountMinor: number;
+  currency: string;
+}
+
 export interface PaymentProvider {
   authorize(req: AuthorizeRequest): Promise<{ authorizationId: string }>;
   capture(req: CaptureRequest): Promise<{ pspReference: string; capturedMinor: number }>;
   release(req: ReleaseRequest): Promise<void>;
+  /** Refunds part or all of one capture. Declined when it would refund more than is left of the capture. */
+  refund(req: RefundRequest): Promise<{ refundReference: string }>;
 }
 
 export class PspTimeoutError extends Error {

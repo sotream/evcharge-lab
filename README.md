@@ -34,7 +34,7 @@
 > **Status:** a learning and design lab, not a production system. Its known gaps are listed in [known limits](docs/known-limits.md).
 
 <!-- stats:start -->
-| 7 services | 22 ADRs | 12 drill scripts | 19 of 20 drills pass on the latest run | 23 of 23 findings fixed |
+| 7 services | 23 ADRs | 12 drill scripts | 19 of 20 drills pass on the latest run | 23 of 23 findings fixed |
 |:---:|:---:|:---:|:---:|:---:|
 | [NestJS and Go, plus a station simulator](#the-system-design-question-each-service-answers) | [one decision per file](docs/adr/README.md) | [failure drills](docs/drills.md) | [12 failed runs kept as evidence](docs/drills.md) | [found by drills, k6 and reviews](docs/findings.md) |
 <!-- stats:end -->
@@ -96,7 +96,7 @@ Cross-cutting decisions (requirements, architecture, contracts, toolchain) are i
 
 ## Results
 
-One instance per service on one machine; the targets come from [`load/targets.json`](load/targets.json), transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, except the rate rule for k6 throughput, so a missed target stays visible as missed. One machine ran both the stack and the load generator; see [known limits](docs/known-limits.md). Setup, how to read the verdicts and the charts: [`docs/results.md`](docs/results.md). The full table with sources: [`docs/metrics.md`](docs/metrics.md).
+One instance per service on one machine; the targets come from [`load/targets.json`](load/targets.json), transcribed from [ADR 0000](docs/adr/0000-requirements-and-capacity.md). Every verdict compares the measured value with the target with no tolerance, except the rate rule for k6 throughput, so a missed target stays visible as missed. One machine ran both the stack and the load generator; see [known limits](docs/known-limits.md). Each number is one short run (30–60 s) on one machine; the driver-api read figure is a cache-path number and 10,000 connections were never measured together with 2,000 msg/s. Setup, how to read the verdicts and the charts: [`docs/results.md`](docs/results.md). The full table with sources: [`docs/metrics.md`](docs/metrics.md).
 
 <!-- glance:start -->
 | Service | Metric | Target | Measured | Verdict | Source |

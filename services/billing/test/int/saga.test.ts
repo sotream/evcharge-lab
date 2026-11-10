@@ -2,9 +2,10 @@
 import { bootstrapService, HealthRegistry, type RunningService } from '@evcharge/platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../../src/app.module';
+import { scrubDeletedDrivers } from '../../src/gdpr';
 import { metrics } from '../../src/metrics';
 import { completedEvent, createHarness, driverIdOf, type Harness, sessionIdOf, startedEvent } from './harness';
-import { silentLogger, startStubTariff, type StubTariff, waitFor } from './infra';
+import { INTERNAL_TOKEN, silentLogger, startStubTariff, type StubTariff, waitFor } from './infra';
 
 const count = async (h: Harness, sql: string, params: unknown[] = []) => Number((await h.db.pool.query<{ n: string }>(sql, params)).rows[0]?.n);
 const sagaState = async (h: Harness, n: number) => (await h.db.pool.query<{ state: string }>('SELECT state FROM billing_sagas WHERE session_id = $1', [sessionIdOf(n)])).rows[0]?.state;
@@ -88,6 +89,19 @@ describe('exactly-once effect: replays, duplicates, PSP timeouts, two replicas',
     // the timeout path was actually exercised
     expect(await pspCalls('capture', 'timeout')).toBeGreaterThan(timeoutsBefore);
 
+    // Review Focus 3: two replicas issued these concurrently; numbers are unique, gapless and match the document
+    const numbers = (await h.db.pool.query<{ n: string }>('SELECT invoice_number AS n FROM invoice_registry ORDER BY invoice_number')).rows.map((r) => r.n);
+    expect(numbers).toHaveLength(ALL);
+    for (const n of numbers) expect(n).toMatch(/^EVC-\d{4}-\d{6}$/);
+    const seqs = numbers.map((n) => Number(n.split('-')[2]));
+    expect(new Set(seqs).size).toBe(ALL);
+    expect(seqs.at(-1)! - seqs[0]! + 1).toBe(ALL);
+    expect(seqs[0]).toBe(1);
+    expect(await count(h, 'SELECT count(*) AS n FROM invoices i JOIN invoice_registry r ON r.invoice_id = i.invoice_id WHERE i.invoice_number IS DISTINCT FROM r.invoice_number')).toBe(0);
+    // VAT: 19% of the gross total, net + vat = total on every invoice
+    expect(await count(h, 'SELECT count(*) AS n FROM invoices WHERE vat_rate_bp <> 1900 OR net_minor + vat_minor <> total_minor OR vat_minor <> round(total_minor * 1900.0 / 11900)')).toBe(0);
+    expect(await count(h, 'SELECT count(*) AS n FROM invoices WHERE vat_minor > 0')).toBeGreaterThan(0);
+
     // outbox: one invoice-issued and one payment-captured per paid session, written exactly once
     expect(await count(h, "SELECT count(*) AS n FROM outbox WHERE headers->>'event-type' = 'billing.invoice-issued'")).toBe(ALL);
     expect(await count(h, "SELECT count(DISTINCT key) AS n FROM outbox WHERE headers->>'event-type' = 'billing.payment-captured'")).toBe(DRIVERS);
@@ -136,6 +150,10 @@ describe('tariff outage: the saga waits in PRICING and completes after recovery'
     await waitFor(async () => (await count(h, "SELECT count(*) AS n FROM billing_sagas WHERE state = 'PAID'")) === 1, { what: 'PAID after recovery' });
     expect(await count(h, 'SELECT count(*) AS n FROM invoices')).toBe(1);
     expect(await count(h, 'SELECT count(*) AS n FROM payments')).toBe(1);
+    // payment tokens are encrypted at rest
+    const tok = (await h.db.pool.query<{ auth_token: string; capture_token: string }>('SELECT auth_token, capture_token FROM billing_sagas')).rows[0];
+    expect(tok?.auth_token.startsWith('v1:')).toBe(true);
+    expect(tok?.capture_token.startsWith('v1:')).toBe(true);
     const latency = await metrics.invoiceLatency.get();
     expect(latency.values.find((v) => v.metricName === 'billing_invoice_latency_seconds_count')?.value).toBeGreaterThanOrEqual(1);
   });
@@ -171,6 +189,110 @@ describe('a quote the tariff service rejects for good releases the hold', () => 
   });
 });
 
+describe('energy flagged by sessions is held for review (M3)', () => {
+  let tariff: StubTariff;
+  let h: Harness;
+  beforeAll(async () => {
+    tariff = await startStubTariff();
+    h = await createHarness(tariff.url, 3);
+  });
+  afterAll(async () => {
+    await h?.close();
+    await tariff?.close();
+  });
+
+  it.each([
+    [9101, 'implausible', 5000],
+    [9102, 'meter_regressed', 0],
+    [9103, 'stale', 0],
+  ])('session %i flagged %s waits in PRICING for review: no invoice, hold kept, payment-failed emitted', async (n, flag, energy) => {
+    await h.db.pool.query('INSERT INTO payment_methods (driver_id, token) VALUES ($1, $2) ON CONFLICT DO NOTHING', [driverIdOf(n), `tok_${n}`]);
+    await h.startInstance();
+    const ev = completedEvent(n, driverIdOf(n), energy);
+    (ev.data as { energyFlag?: string }).energyFlag = flag;
+    await h.publishSession(startedEvent(n, driverIdOf(n)));
+    await h.publishSession(ev);
+    await waitFor(async () => (await h.db.pool.query("SELECT 1 FROM billing_sagas WHERE session_id = $1 AND state = 'PRICING' AND next_attempt_at IS NULL AND failure_reason = $2", [sessionIdOf(n), `energy_review:${flag}`])).rowCount, { what: 'held for review' });
+    await waitFor(() => h.billingEvents.some((e) => e.type === 'billing.payment-failed' && e.data.sessionId === sessionIdOf(n) && e.data.step === 'pricing'), { what: 'payment-failed on Kafka' });
+    expect((await h.db.pool.query('SELECT 1 FROM invoice_registry WHERE session_id = $1', [sessionIdOf(n)])).rowCount).toBe(0);
+    const auth = (await h.db.pool.query<{ released: boolean }>('SELECT a.released FROM psp_authorizations a JOIN billing_sagas s ON s.authorization_id = a.authorization_id WHERE s.session_id = $1', [sessionIdOf(n)])).rows[0];
+    expect(auth?.released).toBe(false);
+  });
+
+  it('lists a held saga and resumes it with acceptEnergy, which then invoices; resuming again is a 409', async () => {
+    const n = 9104;
+    await h.db.pool.query('INSERT INTO payment_methods (driver_id, token) VALUES ($1, $2) ON CONFLICT DO NOTHING', [driverIdOf(n), `tok_${n}`]);
+    const { rt, config } = await h.startInstance();
+    const svc = await bootstrapService({ module: AppModule.register(rt.deps), config, logger: silentLogger, port: 0, handleSignals: false, health: new HealthRegistry() });
+    try {
+      const internal = async (method: string, path: string, body?: unknown) => {
+        const res = await fetch(`${svc.url}${path}`, { method, headers: { 'x-internal-token': INTERNAL_TOKEN, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+        const text = await res.text();
+        return { status: res.status, body: text ? JSON.parse(text) : undefined };
+      };
+      const ev = completedEvent(n, driverIdOf(n), 5000);
+      (ev.data as { energyFlag?: string }).energyFlag = 'implausible';
+      await h.publishSession(startedEvent(n, driverIdOf(n)));
+      await h.publishSession(ev);
+      await waitFor(async () => (await h.db.pool.query("SELECT 1 FROM billing_sagas WHERE session_id = $1 AND state = 'PRICING' AND next_attempt_at IS NULL", [sessionIdOf(n)])).rowCount, { what: 'held' });
+      const list = await internal('GET', '/internal/sagas/parked');
+      expect(list.status).toBe(200);
+      expect(list.body.find((x: { sessionId: string }) => x.sessionId === sessionIdOf(n))).toMatchObject({ state: 'PRICING', failureReason: 'energy_review:implausible' });
+      expect((await internal('POST', `/internal/sagas/${sessionIdOf(n)}/resume`, { acceptEnergy: true })).status).toBe(200);
+      await waitFor(async () => (await h.db.pool.query('SELECT 1 FROM invoice_registry WHERE session_id = $1', [sessionIdOf(n)])).rowCount, { what: 'invoice after resume' });
+      expect((await internal('POST', `/internal/sagas/${sessionIdOf(n)}/resume`)).status).toBe(409);
+      expect((await internal('POST', `/internal/sagas/${sessionIdOf(1)}/resume`)).status).toBe(404);
+    } finally {
+      await svc.shutdown('test');
+    }
+  });
+});
+
+describe('account deletion with an unfinished saga', () => {
+  let tariff: StubTariff;
+  let h: Harness;
+  beforeAll(async () => {
+    tariff = await startStubTariff();
+    h = await createHarness(tariff.url, 3);
+  });
+  afterAll(async () => {
+    await h?.close();
+    await tariff?.close();
+  });
+
+  it('keeps the card and tokens until the saga is final, refuses a new card, then scrubs', async () => {
+    const n = 9201;
+    const d = driverIdOf(n);
+    tariff.down = true;
+    await h.db.pool.query('INSERT INTO payment_methods (driver_id, token) VALUES ($1, $2)', [d, 'tok_9201']);
+    const { rt, config } = await h.startInstance();
+    const svc = await bootstrapService({ module: AppModule.register(rt.deps), config, logger: silentLogger, port: 0, handleSignals: false, health: new HealthRegistry() });
+    try {
+      const call = async (method: string, path: string, body?: unknown) => {
+        const res = await fetch(`${svc.url}${path}`, { method, headers: { 'x-internal-token': INTERNAL_TOKEN, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+        return res.status;
+      };
+      await h.publishSession(startedEvent(n, d));
+      await h.publishSession(completedEvent(n, d, 5000));
+      await waitFor(async () => (await h.db.pool.query("SELECT 1 FROM billing_sagas WHERE session_id = $1 AND state = 'PRICING' AND attempts >= 1 AND auth_token IS NOT NULL", [sessionIdOf(n)])).rowCount, { what: 'PRICING with the hold taken' });
+
+      expect(await call('DELETE', `/internal/drivers/${d}/payment-data`)).toBe(204);
+      expect((await h.db.pool.query('SELECT 1 FROM deleted_drivers WHERE driver_id = $1', [d])).rowCount).toBe(1);
+      expect((await h.db.pool.query('SELECT 1 FROM payment_methods WHERE driver_id = $1', [d])).rowCount).toBe(1); // the saga still needs it
+      expect(await call('PUT', `/v1/drivers/${d}/payment-method`, { token: 'tok_new_card' })).toBe(410);
+
+      tariff.down = false;
+      await waitFor(async () => (await sagaState(h, n)) === 'PAID', { what: 'PAID' });
+      expect(await scrubDeletedDrivers(h.db.pool)).toBeGreaterThan(0);
+      expect((await h.db.pool.query('SELECT 1 FROM billing_sagas WHERE session_id = $1 AND auth_token IS NULL AND capture_token IS NULL', [sessionIdOf(n)])).rowCount).toBe(1);
+      expect((await h.db.pool.query('SELECT 1 FROM payment_methods WHERE driver_id = $1', [d])).rowCount).toBe(0);
+      expect((await h.db.pool.query('SELECT 1 FROM invoice_registry WHERE session_id = $1', [sessionIdOf(n)])).rowCount).toBe(1);
+    } finally {
+      await svc.shutdown('test');
+    }
+  });
+});
+
 describe('declines, compensation and the HTTP API', () => {
   let tariff: StubTariff;
   let h: Harness;
@@ -184,7 +306,7 @@ describe('declines, compensation and the HTTP API', () => {
   beforeAll(async () => {
     tariff = await startStubTariff();
     h = await createHarness(tariff.url, 3);
-    const { rt, config } = await h.startInstance({ PSP_DECLINE_TOKENS: 'tok_nofunds', PSP_AUTH_DECLINE_TOKENS: 'tok_stolen' });
+    const { rt, config } = await h.startInstance({ PSP_DECLINE_TOKENS: 'tok_nofunds', PSP_AUTH_DECLINE_TOKENS: 'tok_stolen', CAPTURE_RETRY_DELAYS_H: 'none' }); // no dunning: a decline fails at once
     svc = await bootstrapService({ module: AppModule.register(rt.deps), config, logger: silentLogger, port: 0, handleSignals: false, health: new HealthRegistry() });
     base = svc.url;
   });
@@ -213,6 +335,7 @@ describe('declines, compensation and the HTTP API', () => {
 
   it('declined capture releases the hold and reports PaymentFailed; declined authorization still invoices', async () => {
     expect((await call('PUT', `/v1/drivers/${D_OK}/payment-method`, { ...auth, 'x-driver-id': D_OK }, { token: 'tok_good' })).status).toBe(204);
+    expect((await h.db.pool.query<{ token: string }>('SELECT token FROM payment_methods WHERE driver_id = $1', [D_OK])).rows[0]?.token.startsWith('v1:')).toBe(true); // encrypted at rest
     expect((await call('PUT', `/v1/drivers/${D_CAPTURE_DECLINED}/payment-method`, auth, { token: 'tok_nofunds' })).status).toBe(204);
     expect((await call('PUT', `/v1/drivers/${D_AUTH_DECLINED}/payment-method`, auth, { token: 'tok_stolen' })).status).toBe(204);
 
@@ -269,5 +392,14 @@ describe('declines, compensation and the HTTP API', () => {
     const month = new Date().toISOString().slice(0, 7).replace('-', '_');
     const { rows } = await h.db.pool.query<{ part: string }>('SELECT DISTINCT tableoid::regclass::text AS part FROM invoices');
     expect(rows.map((r) => r.part)).toEqual([`invoices_${month}`]);
+  });
+
+  it('deletes payment data of a driver (GDPR) but keeps the invoices; a second call is a no-op', async () => {
+    expect((await call('DELETE', `/internal/drivers/${D_OK}/payment-data`, auth)).status).toBe(204);
+    expect(await count(h, 'SELECT count(*) AS n FROM payment_methods WHERE driver_id = $1', [D_OK])).toBe(0);
+    expect(await count(h, "SELECT count(*) AS n FROM billing_sagas WHERE driver_id = $1 AND state = 'PAID' AND auth_token IS NULL AND capture_token IS NULL", [D_OK])).toBe(1);
+    expect(await count(h, 'SELECT count(*) AS n FROM invoices WHERE driver_id = $1', [D_OK])).toBeGreaterThanOrEqual(1);
+    expect((await call('DELETE', `/internal/drivers/${D_OK}/payment-data`, auth)).status).toBe(204);
+    expect((await call('DELETE', `/internal/drivers/${D_OK}/payment-data`, {})).status).toBe(401);
   });
 });

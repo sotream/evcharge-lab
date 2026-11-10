@@ -5,7 +5,10 @@
 /* oxlint-disable no-await-in-loop */ // sweep batches run one after another
 import { type Logger, type Pool, PROCESSED_EVENTS_RETENTION_MS, purgeIdempotencyKeys, purgeProcessedEvents, withTx } from '@evcharge/platform';
 import { m } from '../metrics';
+import { type ActiveRow, completeSession } from '../ocpp/ocpp.service';
 import { emitSessionEvent, type TopicNames } from '../outbox-events';
+import { activeSessionsWithStopReason, requestRemoteStop } from '../session-stop';
+import { markSiteDue } from '../site-signal';
 import { errorMessage } from '../util';
 
 const SWEEP_BATCH = 200;
@@ -80,6 +83,74 @@ export async function rejectUnconfirmedReservations(pool: Pool, topics: TopicNam
   return total;
 }
 
+/**
+ * Closes sessions that never got a StopTransaction (station gone for good): energy 0, flag 'stale', so billing
+ * parks them instead of charging for a guess. Staleness is measured from SERVER time, the uuidv7 timestamp of the
+ * session_id: started_at is the station's clock and may be days off (MAX_CLOCK_SKEW_MS), which would reap a live
+ * session. sessions.started_at (the partition key) is read by session_id. Returns the count.
+ */
+export async function closeStaleSessions(pool: Pool, topics: TopicNames, staleAfterMs: number): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const n = await withTx(pool, async (c) => {
+      const { rows } = await c.query<ActiveRow & { session_started_at: Date; meter_start_wh: string }>(
+        `SELECT a.*, s.started_at AS session_started_at, s.meter_start_wh
+           FROM active_sessions a JOIN sessions s ON s.session_id = a.session_id
+          WHERE uuid_extract_timestamp(a.session_id) < now() - make_interval(secs => $1::float8 / 1000)
+          ORDER BY uuid_extract_timestamp(a.session_id) LIMIT ${SWEEP_BATCH} FOR UPDATE OF a SKIP LOCKED`,
+        [staleAfterMs],
+      );
+      for (const r of rows) {
+        await c.query('DELETE FROM active_sessions WHERE transaction_id = $1', [r.transaction_id]);
+        await completeSession(c, topics, { ...r, started_at: r.session_started_at }, Number(r.meter_start_wh), new Date(), 'StaleClosed', 'stale');
+        await markSiteDue(c, r.site_id); // the connector is free again: reallocate
+      }
+      return rows.length;
+    });
+    total += n;
+    if (n < SWEEP_BATCH) break;
+  }
+  return total;
+}
+
+/**
+ * A session stuck in Stopping because the RemoteStopTransaction got no result (lost on the way back) goes back to
+ * Active and the command is marked Expired, so the driver can stop again; a StopTransaction from the station still
+ * completes it. Returns the count.
+ */
+export async function revertUnconfirmedStops(pool: Pool): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const n = await withTx(pool, async (c) => {
+      const { rows } = await c.query<{ command_id: string }>(
+        `WITH due AS (
+           SELECT cmd.command_id, cmd.session_id, cmd.session_started_at
+             FROM commands cmd JOIN sessions s ON s.session_id = cmd.session_id AND s.started_at = cmd.session_started_at
+            WHERE cmd.action = 'RemoteStopTransaction' AND cmd.outcome IS NULL AND s.status = 'Stopping'
+              AND cmd.expires_at + make_interval(secs => ${RESULT_GRACE_S}) < now()
+            ORDER BY cmd.expires_at LIMIT ${SWEEP_BATCH} FOR UPDATE OF cmd SKIP LOCKED),
+         expired AS (UPDATE commands SET outcome = 'Expired', completed_at = now() WHERE command_id IN (SELECT command_id FROM due) RETURNING command_id),
+         reverted AS (UPDATE sessions s SET status = 'Active' FROM due
+           WHERE s.session_id = due.session_id AND s.started_at = due.session_started_at AND s.status = 'Stopping' RETURNING s.session_id)
+         SELECT command_id FROM expired`,
+      );
+      return rows.length;
+    });
+    total += n;
+    if (n < SWEEP_BATCH) break;
+  }
+  return total;
+}
+
+/** Re-issues the RemoteStop of sessions a system rule (declined authorization, profile rejection) wants stopped but that went back to Active. */
+export async function reissueRequestedStops(pool: Pool, topics: TopicNames, minAgeS = 30): Promise<number> {
+  return withTx(pool, async (c) => {
+    let n = 0;
+    for (const id of await activeSessionsWithStopReason(c, undefined, minAgeS)) if (await requestRemoteStop(c, topics, id)) n++;
+    return n;
+  });
+}
+
 /** Keeps monthly partitions of sessions/reservations ready for the next months. */
 export async function ensurePartitions(pool: Pool, months = 4): Promise<number> {
   const { rows } = await pool.query<{ n: number }>('SELECT ensure_month_partitions(now(), $1) AS n', [months]);
@@ -103,6 +174,7 @@ export class Maintenance {
     private readonly pool: Pool,
     private readonly topics: TopicNames,
     private readonly sweeperIntervalMs: number,
+    private readonly staleAfterMs: number,
     private readonly logger: Logger,
   ) {}
 
@@ -112,6 +184,9 @@ export class Maintenance {
     this.every('sweeper', this.sweeperIntervalMs, this.sweeperIntervalMs, async () => {
       await sweepExpiredReservations(this.pool, this.topics);
       await rejectUnconfirmedReservations(this.pool, this.topics);
+      await revertUnconfirmedStops(this.pool);
+      await reissueRequestedStops(this.pool, this.topics);
+      await closeStaleSessions(this.pool, this.topics, this.staleAfterMs);
     });
     this.every('partitions', 3_600_000, 1000, () => ensurePartitions(this.pool));
     this.every('purge', 3_600_000, 5000, () => purgeLedgers(this.pool));

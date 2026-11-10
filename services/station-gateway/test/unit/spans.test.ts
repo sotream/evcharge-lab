@@ -7,6 +7,7 @@ import type { WebSocket } from 'ws';
 import { AllocationTracker } from '../../src/charging';
 import { gatewayMetrics } from '../../src/metrics';
 import { defaultTopics, EventPublisher } from '../../src/publisher';
+import { SiteDrawTracker } from '../../src/site-draw';
 import type { StationCredential } from '../../src/sessions-client';
 import { StationConnection } from '../../src/station-connection';
 
@@ -31,6 +32,7 @@ const conn = new StationConnection('ST-1', ws, {} as StationCredential, {
   metrics,
   logger,
   allocations: new AllocationTracker(),
+  siteDraw: new SiteDrawTracker(metrics, 'test'),
   commandQueue: 4,
   callTimeoutMs: 1000,
   replayThresholdS: 60,

@@ -54,6 +54,7 @@ const PASS_THROUGH_CODES = new Set([
   'driver_blocked',
   'driver_not_registered',
   'driver_conflict',
+  'active_session',
   'in_flight',
   'idempotency_key_required',
   'idempotency_key_reused',

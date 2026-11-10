@@ -114,7 +114,11 @@ groups:
     interval: 15s
     rules:
       # ADR 0000 Smart charging: site power cap never exceeded. Ratio > 1 means exceeded.
+      # Measured by the gateways from the stations' own meter values (M9); every instance reports its stations.
       - record: slo:site_cap_utilisation:max
+        expr: max(sum by (site_id) (gateway_site_drawn_watts) / max by (site_id) (gateway_site_cap_watts))
+      # The simulator's own view, kept for the drills.
+      - record: slo:site_cap_utilisation_sim:max
         expr: max(sim_site_drawn_watts / sim_site_cap_watts)
       - record: group:kafka_consumer_lag:sum
         expr: sum by (group) (kafka_consumer_lag)

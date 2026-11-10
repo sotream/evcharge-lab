@@ -32,6 +32,14 @@ export const configSchema = baseConfigSchema.extend({
   ALLOCATION_PG_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),
   /** Reservation sweeper (ADR 0005: every 5 s). */
   SWEEPER_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  /** 24 h station offline window (ADR 0000) x 2. */
+  STALE_SESSION_AFTER_H: z.coerce.number().positive().default(48),
+  /** Consecutive Rejected SetChargingProfile results that raise sessions_profile_noncompliant_total (M10). */
+  PROFILE_FAILURES_TO_ALERT: z.coerce.number().int().min(1).default(3),
+  /** Consecutive Rejected results after which the session is stopped; 0 = never (a stop is a policy decision). */
+  PROFILE_FAILURES_TO_STOP: z.coerce.number().int().min(0).default(0),
+  /** Stop a charging session when billing reports a declined payment authorization. */
+  STOP_ON_AUTH_DECLINE: envBool().default(true),
   /** Run Kafka consumers and background workers (tests may disable). */
   WORKERS_ENABLED: envBool().default(true),
 });

@@ -7,9 +7,10 @@ import { CommandChannel, type CommandOutcome, type CsmsAction, type OutboundComm
 import type { GatewayMetrics } from './metrics';
 import { encodeCall, encodeError, encodeResult, parseFrame, validateStationCall, type OcppErrorCode } from './ocpp/framing';
 import { isReplayed, toReadings } from './ocpp/meter';
+import type { SiteDrawTracker } from './site-draw';
 import { BufferFullError, type EventPublisher, type GatewayTopics } from './publisher';
 import type { SessionsClient, StationCredential } from './sessions-client';
-import { errorMessage } from './util';
+import { errorMessage, signedMeterData } from './util';
 
 export const PRODUCER = 'station-gateway';
 
@@ -21,6 +22,7 @@ export interface ConnectionContext {
   metrics: GatewayMetrics;
   logger: Logger;
   allocations: AllocationTracker;
+  siteDraw: SiteDrawTracker;
   commandQueue: number;
   callTimeoutMs: number;
   replayThresholdS: number;
@@ -55,6 +57,7 @@ export class StationConnection {
     readonly credential: StationCredential,
     private readonly ctx: ConnectionContext,
   ) {
+    if (credential.capW !== undefined) ctx.siteDraw.setCap(credential.siteId, credential.capW);
     this.channel = new CommandChannel((id, action, payload) => this.sendCall(id, action, payload), { capacity: ctx.commandQueue, timeoutMs: ctx.callTimeoutMs });
   }
 
@@ -69,6 +72,7 @@ export class StationConnection {
     this.closed = true;
     this.channel.close();
     this.ctx.allocations.clearStation(this.stationId);
+    this.ctx.siteDraw.clear(this, this.credential.siteId);
   }
 
   /** Queues a CSMS -> station command; `done` receives the outcome. */
@@ -172,6 +176,7 @@ export class StationConnection {
       }
       case 'StatusNotification': {
         const r = req as ocpp.StationReq<'StatusNotification'>;
+        if (r.status !== 'Charging') this.ctx.siteDraw.clearConnector(this, this.credential.siteId, r.connectorId);
         await publisher.publish(
           topics.stationEvents,
           makeEnvelope(
@@ -193,6 +198,7 @@ export class StationConnection {
         }
         const replayed = isReplayed(readings, Date.now(), this.ctx.replayThresholdS);
         trace.getActiveSpan()?.setAttribute('ocpp.replayed', replayed);
+        this.ctx.siteDraw.meterValues(this, this.credential.siteId, r.connectorId, readings, replayed, r.transactionId);
         await publisher.publish(
           topics.meterValues,
           makeEnvelope(
@@ -244,6 +250,8 @@ export class StationConnection {
       }
       case 'StopTransaction': {
         const r = req as ocpp.StationReq<'StopTransaction'>;
+        this.ctx.siteDraw.clearTransaction(this, this.credential.siteId, r.transactionId);
+        const signed = signedMeterData(r.transactionData, (n) => this.ctx.logger.warn({ stationId, transactionId: r.transactionId, dropped: n }, 'signed meter data over the contract limits dropped'));
         let res;
         try {
           res = await this.withRetryOnInFlight(() =>
@@ -255,6 +263,7 @@ export class StationConnection {
               timestamp: new Date(r.timestamp).toISOString(),
               ...(r.reason ? { reason: r.reason } : {}),
               ...(r.idTag ? { idTag: r.idTag } : {}),
+              ...(signed.length ? { signedMeterData: signed } : {}),
             }),
           );
         } catch (err) {

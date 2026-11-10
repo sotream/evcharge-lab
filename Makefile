@@ -11,7 +11,7 @@ export TEST_REDIS_URL ?= redis://localhost:26379
 export TEST_KAFKA_BROKERS ?= localhost:29091,localhost:29092,localhost:29093
 export INTEGRATION ?= 1
 
-.PHONY: charts-test history-test prom-check check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
+.PHONY: certs charts-test history-test prom-check check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
 
 check: install contracts topics-sync prom-check history-test lint build typecheck test-unit charts-test infra-up test-int go-check
 	@echo "✔ make check passed"
@@ -46,7 +46,10 @@ charts-test:
 # same station routes, so they are stopped first (infra keeps running).
 APP_SERVICES := simulator station-lb station-gateway-1 station-gateway-2 sessions billing telemetry-ingest smart-charging tariff driver-api
 
-infra-up:
+certs:
+	bash infra/haproxy/gen-certs.sh
+
+infra-up: certs
 	@docker compose stop $(APP_SERVICES) >/dev/null 2>&1 || true
 	docker compose up -d --wait postgres postgres-replica postgres-telemetry redis kafka-1 kafka-2 kafka-3
 	docker compose run --rm topics-init >/dev/null
@@ -58,9 +61,11 @@ infra-down:
 PROMTOOL := docker run --rm -v "$(CURDIR)/infra/prometheus:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.16.0
 PROM_RULES := $(patsubst infra/prometheus/%,/etc/prometheus/%,$(wildcard infra/prometheus/rules/*.yml))
 PROM_TESTS := $(patsubst infra/prometheus/%,/etc/prometheus/%,$(wildcard infra/prometheus/tests/*.yml))
+AMTOOL := docker run --rm -v "$(CURDIR)/infra/alertmanager:/etc/alertmanager:ro" --entrypoint amtool prom/alertmanager:v0.34.1
 prom-check:
 	$(PROMTOOL) check rules $(PROM_RULES)
 	$(PROMTOOL) test rules $(PROM_TESTS)
+	$(AMTOOL) check-config /etc/alertmanager/alertmanager.yml
 
 test-int: infra-up
 	pnpm test:int
@@ -74,7 +79,7 @@ go-check: infra-up
 	  (cd $$m && go vet ./... && golangci-lint run ./... && go test -race -count=1 ./...) || exit 1; \
 	done
 
-up:
+up: certs
 	docker compose up -d --build
 
 down:

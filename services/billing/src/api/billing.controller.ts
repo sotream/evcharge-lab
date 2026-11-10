@@ -1,13 +1,21 @@
 import { api } from '@evcharge/contracts';
+import type { CreditNotes } from '../invoices/credit-notes';
 import { InternalTokenGuard, type Pool } from '@evcharge/platform';
 import { Body, Controller, ForbiddenException, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Put, Query, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import type { InvoiceReader } from '../invoices/invoice-reader';
+import type { SagaEngine } from '../sagas/saga-engine';
+import { isDriverDeleted } from '../gdpr';
+import { encryptToken } from '../token-crypto';
 
 export const BILLING_DEPS = Symbol('BILLING_DEPS');
 export interface BillingDeps {
   pool: Pool;
   invoices: InvoiceReader;
+  engine: SagaEngine;
+  /** AES-256 key for payment tokens at rest (TOKEN_ENC_KEY). */
+  tokenKey: Buffer;
+  creditNotes: CreditNotes;
 }
 
 const uuid = z.uuid();
@@ -31,12 +39,13 @@ export class BillingController {
   async setPaymentMethod(@Param('driverId') driverId: string, @Body() body: unknown, @Headers('x-driver-id') actor?: string): Promise<void> {
     if (!uuid.safeParse(driverId).success) throw problem(400, 'Bad Request', 'driverId must be a uuid');
     this.assertActor(actor, driverId);
+    if (await isDriverDeleted(this.deps.pool, driverId)) throw problem(410, 'Gone', 'the account was deleted');
     const parsed = api.BillingPublic.paymentMethodReq.safeParse(body);
     if (!parsed.success) throw problem(400, 'Bad Request', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
     await this.deps.pool.query(
       `INSERT INTO payment_methods (driver_id, token) VALUES ($1, $2)
        ON CONFLICT (driver_id) DO UPDATE SET token = EXCLUDED.token, updated_at = now()`,
-      [driverId, parsed.data.token],
+      [driverId, encryptToken(parsed.data.token, this.deps.tokenKey)],
     );
   }
 

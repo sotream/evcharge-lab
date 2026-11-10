@@ -26,6 +26,8 @@ export const SessionsInternal = {
     /** hex SHA-256 of the station's 128-bit random secret (ADR 0003: no slow KDF for high-entropy secrets). */
     secretSha256: z.string().length(64),
     enabled: z.boolean(),
+    /** Site power cap in W; the gateway exports it as gateway_site_cap_watts. */
+    capW: z.number().int().optional(),
     /** Static profiles the gateway applies on its own (ADR 0006). */
     chargingDefaults: z.object({
       /** TxDefaultProfile limit: min(minW, safeShareW). Every new session starts here. */
@@ -57,6 +59,7 @@ export const SessionsInternal = {
     timestamp: ts,
     reason: z.string().optional(),
     idTag: z.string().optional(),
+    signedMeterData: z.array(z.object({ format: z.literal('SignedData'), value: z.string().max(8192), context: z.string().optional() })).max(16).optional(),
   }),
   stopTxRes: z.object({ sessionId: uuid.nullable(), idTagInfo: IdTagInfo.optional() }),
   /** POST /internal/drivers  (called by driver-api on registration) */
@@ -109,6 +112,7 @@ export const SessionsPublic = {
     stoppedAt: ts.nullable(),
     energyWh: z.number().int().nullable(),
     limitW: z.number().int().nullable(),
+    signedMeterData: z.array(z.object({ format: z.literal('SignedData'), value: z.string().max(8192), context: z.string().optional() })).nullable().optional(),
   }),
 } as const;
 
@@ -150,7 +154,9 @@ export type AllocateReq = z.infer<typeof AllocateReq>;
 export type AllocateRes = z.infer<typeof AllocateRes>;
 
 // ========== tariff (Go): POST /v1/quote ==========
-export const QuoteReq = z.object({ tariffId: z.string(), startedAt: ts, stoppedAt: ts, energyWh: z.number().int().min(0) });
+/** energyProfile: the cumulative energy register during the session (optional, ADR 0011); time-of-use energy is split by it when it has two or more usable samples. */
+export const EnergySample = z.object({ at: ts, energyWh: z.number().int().min(0) });
+export const QuoteReq = z.object({ tariffId: z.string(), startedAt: ts, stoppedAt: ts, energyWh: z.number().int().min(0), energyProfile: z.array(EnergySample).max(2000).optional() });
 export const QuoteLine = z.object({ kind: z.enum(['energy', 'time', 'session', 'idle']), description: z.string(), quantity: z.number(), unit: z.string(), amountMinor: z.number().int() });
 export const QuoteRes = z.object({ tariffId: z.string(), currency: z.string().length(3), lines: z.array(QuoteLine), totalMinor: z.number().int() });
 export type QuoteReq = z.infer<typeof QuoteReq>;
@@ -168,6 +174,12 @@ export const BillingPublic = {
     status: z.enum(['Issued', 'Paid', 'PaymentFailed']),
     total: Money,
     issuedAt: ts,
+    /** Gapless yearly number (EVC-2026-000042); absent on invoices issued before numbering existed. */
+    invoiceNumber: z.string().optional(),
+    /** VAT split of the gross total; absent on invoices issued before it existed. */
+    net: Money.optional(),
+    vat: Money.optional(),
+    vatRateBp: z.number().int().min(0).optional(),
   }),
 } as const;
 

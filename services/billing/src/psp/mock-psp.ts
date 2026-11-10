@@ -7,6 +7,7 @@ import {
   PspDeclinedError,
   PspIdempotencyMismatchError,
   PspTimeoutError,
+  type RefundRequest,
   type ReleaseRequest,
 } from './payment-provider';
 
@@ -98,6 +99,21 @@ export class MockPsp implements PaymentProvider {
       if (authorizationId) await c.query('UPDATE psp_authorizations SET released = true WHERE authorization_id = $1', [authorizationId]);
       return { outcome: 'ok', response: {} };
     });
+  }
+
+  async refund(req: RefundRequest): Promise<{ refundReference: string }> {
+    const res = await this.call(req.idempotencyKey, 'refund', req, async (c) => {
+      const { rows } = await c.query<{ amount_minor: number; currency: string }>('SELECT amount_minor, currency FROM psp_captures WHERE psp_reference = $1 FOR UPDATE', [req.pspReference]);
+      const cap = rows[0];
+      if (!cap) return { outcome: 'declined', response: { reason: 'unknown_capture' } };
+      if (cap.currency !== req.currency) return { outcome: 'declined', response: { reason: 'currency_mismatch' } };
+      const done = await c.query<{ n: string }>('SELECT coalesce(sum(amount_minor), 0) AS n FROM psp_refunds WHERE psp_reference = $1', [req.pspReference]);
+      if (req.amountMinor > cap.amount_minor - Number(done.rows[0]?.n)) return { outcome: 'declined', response: { reason: 'amount_exceeds_capture' } };
+      const refundReference = `ref_${randomUUID()}`;
+      await c.query('INSERT INTO psp_refunds (refund_reference, psp_reference, amount_minor, currency) VALUES ($1, $2, $3, $4)', [refundReference, req.pspReference, req.amountMinor, req.currency]);
+      return { outcome: 'ok', response: { refundReference } };
+    });
+    return { refundReference: String(res['refundReference']) };
   }
 
   private async call(key: string, operation: string, request: object, effect: (c: PoolClient) => Promise<Outcome>): Promise<Record<string, unknown>> {

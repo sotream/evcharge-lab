@@ -1,0 +1,19 @@
+# Lab Alertmanager: groups Prometheus alerts and keeps them visible at http://localhost:29094.
+# `lab-log` has no delivery config on purpose (a lab has nobody to page). To notify someone, add a receiver
+# config below and point the route at it, then `docker compose restart alertmanager`.
+route:
+  receiver: lab-log
+  group_by: [alertname, severity]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+receivers:
+  - name: lab-log
+    # Example (Slack):
+    # slack_configs:
+    #   - api_url_file: /etc/alertmanager/slack-webhook
+    #     channel: '#alerts'
+    #     send_resolved: true
+    # Example (PagerDuty):
+    # pagerduty_configs:
+    #   - routing_key_file: /etc/alertmanager/pagerduty-key

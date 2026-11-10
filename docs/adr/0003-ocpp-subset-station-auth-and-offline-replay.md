@@ -126,3 +126,17 @@ for debugging.
   this.
 - The simulator implements the station side of this ADR: queue, replay with original uniqueIds,
   backoff and storm mode. The drills use it.
+
+## Amendment (2026-11-10): TLS on the edge and signed meter data
+
+**TLS.** HAProxy now also binds `:8443` with TLS (`alpn http/1.1`, certificate from `infra/haproxy/gen-certs.sh`, a lab CA
+and a server certificate for `station-lb` and `localhost`, written to the git-ignored `infra/haproxy/certs/`; host port
+`28443`). The simulator connects to `wss://station-lb:8443/ocpp` and trusts the lab CA through `NODE_EXTRA_CA_CERTS`. Plain
+`ws` on `:8080` stays for load tests only. Together with the Basic-auth lookup this is OCPP security profile 2; profile 3
+(client certificates) is still not implemented, and the rejected-alternatives entry above applies to it only.
+
+**Signed meter data.** The gateway copies every `sampledValue` with `format: 'SignedData'` from `StopTransaction.transactionData`
+into `signedMeterData` of the stop request (`SampledValue.format` was added to the OCPP schema because zod stripped it).
+sessions stores the array verbatim in `sessions.signed_meter_data` (migration `sessions/0006_signed_meter_data.sql`) and
+`GET /v1/sessions/:id` returns it, so a driver can check it with transparency software. The CSMS does not verify
+signatures; that is out of scope.

@@ -2,7 +2,7 @@ import type { Pool } from '@evcharge/platform';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { metrics } from '../../src/metrics';
 import { MockPsp } from '../../src/psp/mock-psp';
-import { type AuthorizeRequest, type CaptureRequest, type PaymentProvider, PspDeclinedError, PspIdempotencyMismatchError, PspTimeoutError, type ReleaseRequest } from '../../src/psp/payment-provider';
+import { type AuthorizeRequest, type CaptureRequest, type PaymentProvider, PspDeclinedError, PspIdempotencyMismatchError, PspTimeoutError, type RefundRequest, type ReleaseRequest } from '../../src/psp/payment-provider';
 import { completedEvent, createHarness, driverIdOf, type Harness, sessionIdOf, startedEvent } from './harness';
 import { startStubTariff, type StubTariff, waitFor } from './infra';
 
@@ -30,6 +30,10 @@ class ScriptedPsp implements PaymentProvider {
     this.releases.push(req);
     return this.inner.release(req);
   }
+  refund(req: RefundRequest) {
+    return this.inner.refund(req);
+  }
+
 }
 
 describe('PSP edge cases', () => {
@@ -40,7 +44,7 @@ describe('PSP edge cases', () => {
   beforeAll(async () => {
     tariff = await startStubTariff();
     h = await createHarness(tariff.url, 3);
-    await h.startInstance({}, (pool) => (psp = new ScriptedPsp(pool)));
+    await h.startInstance({ CAPTURE_RETRY_DELAYS_H: 'none' }, (pool) => (psp = new ScriptedPsp(pool))); // these cases expect a decline to be final
   });
   afterAll(async () => {
     await h?.close();

@@ -238,6 +238,15 @@ services:
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+    depends_on: [alertmanager]
+
+  # Alerts from Prometheus go here (infra/alertmanager/alertmanager.yml; the lab has no external receiver).
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    ports: ["127.0.0.1:29094:9093"]
+    volumes: ["./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    mem_limit: 64m
 
   # Exporters (ADR 0014). Independent views of Kafka consumer lag, Postgres and Redis for dashboards and alerts.
   kafka-exporter:
@@ -302,8 +311,15 @@ services:
   # ---------------------------------------------------------------- station edge
   station-lb:
     image: haproxy:3.4.7-alpine
-    ports: ["${BIND:-127.0.0.1}:28080:8080", "${BIND:-127.0.0.1}:28099:8404"]
-    volumes: ["./infra/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
+    ports: ["${BIND:-127.0.0.1}:28080:8080", "${BIND:-127.0.0.1}:28443:8443", "${BIND:-127.0.0.1}:28099:8404"]
+    volumes:
+      - ./infra/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      # Only server.pem (never ca.key). A missing file must fail loudly, not become a directory: run `make certs`.
+      - type: bind
+        source: ./infra/haproxy/certs/server.pem
+        target: /usr/local/etc/haproxy/certs/server.pem
+        read_only: true
+        bind: { create_host_path: false }
     depends_on: [station-gateway-1, station-gateway-2]
 
   station-gateway-1: &gateway
@@ -385,6 +401,10 @@ services:
       SERVICE_NAME: billing
       DATABASE_URL: postgres://evcharge:evcharge@postgres:5432/billing
       TARIFF_URL: http://tariff:8080
+      # Lab value like the other compose secrets (NODE_ENV=production in the image refuses the built-in default key).
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:-Y29tcG9zZS1sYWItdG9rZW4ta2V5LWNoYW5nZS1tZSE=}
+      # Meter profile for time-of-use pricing (absent = time-weighted); never blocks pricing.
+      TELEMETRY_URL: http://telemetry-ingest:8080
       # The simulator gives one in ten drivers this card, so the decline and compensation path runs in the lab.
       PSP_DECLINE_TOKENS: tok_decline
     ports: ["${BIND:-127.0.0.1}:28083:8080"]
@@ -445,7 +465,8 @@ services:
     depends_on: [station-lb, driver-api, sessions]
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      CSMS_URL: ws://station-lb:8080/ocpp
+      CSMS_URL: wss://station-lb:8443/ocpp
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
       DRIVER_API_URL: http://driver-api:8080
       SIM_SITES: ${SIM_SITES:-20}
       SIM_STATIONS_PER_SITE: ${SIM_STATIONS_PER_SITE:-10}
@@ -459,6 +480,12 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token-change-me}
       STATION_SECRET_SEED: ${STATION_SECRET_SEED:-dev-station-seed-change-me}
     ports: ["127.0.0.1:28089:8080"]
+    volumes:
+      - type: bind
+        source: ./infra/haproxy/certs/ca.pem
+        target: /certs/ca.pem
+        read_only: true
+        bind: { create_host_path: false }
 
 volumes:
   pgdata: {}

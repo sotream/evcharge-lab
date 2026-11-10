@@ -92,6 +92,15 @@
         },
         "stopReason": {
           "type": "string"
+        },
+        "energyFlag": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "meter_regressed",
+            "implausible",
+            "stale"
+          ]
         }
       },
       "required": [

@@ -87,6 +87,7 @@ export interface Allocator {
   calls: number;
   /** Body of the last allocate request. */
   lastReq: Record<string, unknown> | undefined;
+  publishBilling(type: 'billing.payment-failed', data: { invoiceId: string | null; sessionId: string; step: string; reason: string }): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -148,7 +149,7 @@ export interface Harness {
   app: SessionsApp;
   db: Awaited<ReturnType<typeof tempDatabase>>;
   allocator: Allocator;
-  topics: { stationEvents: string; commandResults: string; stationCommands: string; sessionEvents: string };
+  topics: { stationEvents: string; commandResults: string; stationCommands: string; sessionEvents: string; billingEvents: string };
   producer: KafkaProducer;
   /** Stub gateway: answers every SetChargingProfile with Accepted unless `skip` says to leave it unconfirmed. */
   ack: { enabled: boolean; skip?: (cmd: events.StationCommandRequested) => boolean };
@@ -159,9 +160,10 @@ export interface Harness {
   driver(driverId: string): (method: string, path: string, init?: { body?: unknown; key?: string; headers?: Record<string, string> }) => Promise<{ status: number; body: any; headers: Headers }>;
   registerDriver(idTag?: string): Promise<{ driverId: string; idTag: string }>;
   startTx(stationId: string, connectorId: number, idTag: string, msgId?: string): Promise<{ status: number; body: any }>;
-  stopTx(stationId: string, transactionId: number, msgId?: string, meterStopWh?: number): Promise<{ status: number; body: any }>;
+  stopTx(stationId: string, transactionId: number, msgId?: string, meterStopWh?: number, extra?: Record<string, unknown>): Promise<{ status: number; body: any }>;
   publishStationEvent(type: 'station.connector-status-changed' | 'station.connected' | 'station.disconnected', stationId: string, data: Record<string, unknown>, occurredAt?: string): Promise<void>;
   publishCommandResult(commandId: string, stationId: string, action: string, outcome: events.StationCommandCompleted['data']['outcome'], requestedBy?: string): Promise<void>;
+  publishBilling(type: 'billing.payment-failed', data: { invoiceId: string | null; sessionId: string; step: string; reason: string }): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -182,8 +184,8 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
   };
   const db = await tempDatabase();
   const base = uniq('sess').replace(/_/g, '-');
-  const topics = { stationEvents: `${base}.station-events`, commandResults: `${base}.command-results`, stationCommands: `${base}.station-commands`, sessionEvents: `${base}.session-events` };
-  const names = [topics.stationEvents, topics.commandResults, topics.stationCommands, topics.sessionEvents];
+  const topics = { stationEvents: `${base}.station-events`, commandResults: `${base}.command-results`, stationCommands: `${base}.station-commands`, sessionEvents: `${base}.session-events`, billingEvents: `${base}.billing-events` };
+  const names = [topics.stationEvents, topics.commandResults, topics.stationCommands, topics.sessionEvents, topics.billingEvents];
   const dropTopics = await createTopics([...names, `${topics.stationEvents}.dlq`, `${topics.commandResults}.dlq`]);
   const allocator = await startAllocator();
   const config = readConfig({
@@ -206,7 +208,7 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
     ...opts.env,
   });
   const logger = createLogger({ service: 'sessions-test', level: 'warn' });
-  const groups = { stationEvents: uniq('g-st'), commandResults: uniq('g-cr') };
+  const groups = { stationEvents: uniq('g-st'), commandResults: uniq('g-cr'), billingEvents: uniq('g-be') };
   const app = await createSessionsApp({ config, logger, topics, groups, port: 0, handleSignals: false, workers: opts.workers ?? true });
 
   const producer = createProducer({ brokers: KAFKA_BROKERS, clientId: uniq('test-producer') });
@@ -261,14 +263,17 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
     // A replayed message is byte-identical (same uniqueId, same payload), so the timestamp is fixed per message id.
     startTx: (stationId, connectorId, idTag, msgId = randomUUID()) =>
       http('POST', '/internal/ocpp/start-transaction', { body: { stationId, ocppMessageId: msgId, connectorId, idTag, meterStartWh: 1000, timestamp: stampFor(msgId) } }),
-    stopTx: (stationId, transactionId, msgId = randomUUID(), meterStopWh = 6000) =>
-      http('POST', '/internal/ocpp/stop-transaction', { body: { stationId, ocppMessageId: msgId, transactionId, meterStopWh, timestamp: stampFor(msgId) } }),
+    stopTx: (stationId, transactionId, msgId = randomUUID(), meterStopWh = 6000, extra = {}) =>
+      http('POST', '/internal/ocpp/stop-transaction', { body: { stationId, ocppMessageId: msgId, transactionId, meterStopWh, timestamp: stampFor(msgId), ...extra } }),
     publishStationEvent: async (type, stationId, data, occurredAt) => {
       const env = makeEnvelope(type, stationId, { stationId, ...data }, 'test-gateway', occurredAt ? { occurredAt: new Date(occurredAt) } : undefined);
       await send(topics.stationEvents, stationId, env);
     },
     publishCommandResult: async (commandId, stationId, action, outcome, requestedBy = 'sessions') => {
       await send(topics.commandResults, stationId, makeEnvelope('station.command-completed', stationId, { commandId, stationId, action, outcome, requestedBy }, 'test-gateway'));
+    },
+    publishBilling: async (type, data) => {
+      await send(topics.billingEvents, data.sessionId, makeEnvelope(type, data.sessionId, data, 'test-billing'));
     },
     close: async () => {
       await Promise.allSettled(consumers.map((c) => c.stop()));

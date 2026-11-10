@@ -20,6 +20,9 @@ export const gatewayMetrics = (): GatewayMetrics => ({
   produceErrors: counter({ name: 'gateway_produce_errors_total', help: 'Records the broker did not acknowledge, by reason', labelNames: ['topic', 'reason'] as const }),
   rawLogDropped: counter({ name: 'ocpp_raw_log_dropped_total', help: 'Raw OCPP frames not logged (buffer full or broker error)', labelNames: ['reason'] as const }),
   commands: counter({ name: 'gateway_commands_total', help: 'CSMS -> station commands by action and outcome', labelNames: ['action', 'outcome'] as const }),
+  siteDrawn: gauge({ name: 'gateway_site_drawn_watts', help: 'Sum of the latest live Power.Active.Import of this instance\'s connected stations of a site (replayed readings ignored)', labelNames: ['gateway', 'site_id'] as const }),
+  siteCap: gauge({ name: 'gateway_site_cap_watts', help: 'Site power cap from the station credential', labelNames: ['gateway', 'site_id'] as const }),
+  commandResultPublishFailed: counter({ name: 'gateway_command_result_publish_failed_total', help: 'Command results the gateway could not publish (the sessions sweeper recovers by timeout)', labelNames: ['action'] as const }),
   commandDuration: histogram({ name: 'gateway_command_duration_seconds', help: 'Command received by the owning gateway -> station response', labelNames: ['action'] as const, buckets: LATENCY_BUCKETS }),
   dispatch: counter({ name: 'gateway_dispatch_total', help: 'Dispatcher decisions for station.commands records', labelNames: ['result'] as const }),
   credentials: counter({ name: 'gateway_credential_lookups_total', help: 'Station credential lookups by source', labelNames: ['source'] as const }),
@@ -38,6 +41,9 @@ export interface GatewayMetrics {
   produceErrors: Counter<'topic' | 'reason'>;
   rawLogDropped: Counter<'reason'>;
   commands: Counter<'action' | 'outcome'>;
+  siteDrawn: Gauge<'gateway' | 'site_id'>;
+  siteCap: Gauge<'gateway' | 'site_id'>;
+  commandResultPublishFailed: Counter<'action'>;
   commandDuration: Histogram<'action'>;
   dispatch: Counter<'result'>;
   credentials: Counter<'source'>;

@@ -81,10 +81,19 @@ export class DriverController {
     return (await this.auth.me(driverIdOf(req))) ?? Promise.reject(new ProblemError(404, 'not_found', 'Not found', 'driver not found'));
   }
 
+  /** GDPR erasure of the account; invoices and sessions are kept for the legal retention period (see README). */
+  @Delete('me')
+  async deleteMe(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Res({ passthrough: true }) reply: FastifyReply): Promise<void> {
+    idempotencyKey(key);
+    await this.auth.deleteAccount(driverIdOf(req));
+    reply.status(204);
+  }
+
   @Put('me/payment-method')
   async setPaymentMethod(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
+    await this.auth.assertAccountExists(driverId);
     const payload = parse(api.BillingPublic.paymentMethodReq, body);
     return relay(reply, await this.ds.billing.put(`/v1/drivers/${driverId}/payment-method`, payload, { idempotencyKey: k, headers: asDriver(driverId) }));
   }
@@ -102,6 +111,7 @@ export class DriverController {
   async reserve(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
+    await this.auth.assertAccountExists(driverId);
     const payload = parse(S.createReservationReq, body);
     const res = await this.ds.sessions.post<{ reservationId?: number }>('/v1/reservations', payload, { idempotencyKey: k, headers: asDriver(driverId) });
     return this.written(reply, driverId, res, res.body?.reservationId === undefined ? undefined : `reservation:${res.body.reservationId}`);
@@ -119,6 +129,7 @@ export class DriverController {
   async remoteStart(@Req() req: Req, @Headers('idempotency-key') key: string | undefined, @Body() body: unknown, @Res({ passthrough: true }) reply: FastifyReply) {
     const k = idempotencyKey(key);
     const driverId = driverIdOf(req);
+    await this.auth.assertAccountExists(driverId);
     const payload = parse(S.remoteStartReq, body);
     return this.written(reply, driverId, await this.ds.sessions.post('/v1/sessions/remote-start', payload, { idempotencyKey: k, headers: asDriver(driverId) }));
   }

@@ -15,5 +15,7 @@ export const metrics = {
   sagaSteps: counter({ name: 'billing_saga_steps_total', help: 'Saga steps executed by step and outcome', labelNames: ['step', 'outcome'] as const }),
   sagasParked: counter({ name: 'billing_sagas_parked_total', help: 'Sagas given up on automatic retry (deadline or permanent error)', labelNames: ['step'] as const }),
   pspIdempotencyMismatch: counter({ name: 'billing_psp_idempotency_mismatch_total', help: 'PSP rejected a retry because the idempotency key had a different request (saga parked)', labelNames: ['step'] as const }),
+  creditNotes: counter({ name: 'billing_credit_notes_total', help: 'Credit notes issued' }),
+  refunds: counter({ name: 'billing_refunds_total', help: 'PSP refunds for credit notes by outcome', labelNames: ['outcome'] as const }),
   events: counter({ name: 'billing_session_events_total', help: 'Session events consumed by type and result', labelNames: ['type', 'result'] as const }),
 };

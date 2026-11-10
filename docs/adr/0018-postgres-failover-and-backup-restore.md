@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-11-08
+- Superseded in part by [ADR 0022](0022-postgres-ha-manager.md) (proposed): the HA manager and fencing it says are missing.
 - Driven by ADR 0000: "Durability: RPO 0 for sessions and billing (synchronous commit)" and the "Reservations: zero double bookings" SLO. ADR 0001 said that RPO 0 only holds on a single node and that a synchronous standby is a documented gap. This ADR measures what a node loss does, with and without that standby, and what a restore from backup brings back.
 
 ## Context

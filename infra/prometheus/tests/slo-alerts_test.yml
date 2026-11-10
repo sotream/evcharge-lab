@@ -101,13 +101,13 @@ tests:
   - name: site cap exceeded fires
     interval: 1m
     input_series:
-      - series: 'sim_site_cap_watts{service="simulator",site="site-0001"}'
+      - series: 'gateway_site_cap_watts{gateway="gw-1",site_id="site-0001"}'
         values: '100000x10'
-      - series: 'sim_site_drawn_watts{service="simulator",site="site-0001"}'
+      - series: 'gateway_site_drawn_watts{gateway="gw-1",site_id="site-0001"}'
         values: '90000x4 120000x6'
-      - series: 'sim_site_cap_watts{service="simulator",site="site-0002"}'
+      - series: 'gateway_site_cap_watts{gateway="gw-1",site_id="site-0002"}'
         values: '100000x10'
-      - series: 'sim_site_drawn_watts{service="simulator",site="site-0002"}'
+      - series: 'gateway_site_drawn_watts{gateway="gw-1",site_id="site-0002"}'
         values: '100000x10'
     alert_rule_test:
       - eval_time: 3m
@@ -119,9 +119,53 @@ tests:
           - exp_labels:
               severity: critical
             exp_annotations:
-              description: "max over sites of sim_site_drawn_watts / sim_site_cap_watts is above 1. Any occurrence is a failure."
+              description: "max over sites of gateway_site_drawn_watts / gateway_site_cap_watts (station meter values) is above 1. Any occurrence is a failure."
               runbook: "docs/runbook.md#signals-worth-alerting-on"
               summary: "A site drew more than its cap (ADR 0000: the cap is never exceeded)"
+
+  - name: station ignoring charging profiles fires
+    interval: 1m
+    input_series:
+      - series: 'sessions_profile_noncompliant_total{service="sessions",site_id="site-0001"}'
+        values: '_x3 1x10'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: StationIgnoresChargingProfile
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: StationIgnoresChargingProfile
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: sessions
+              site_id: site-0001
+            exp_annotations:
+              summary: "A station at site-0001 keeps rejecting charging profiles"
+              description: "A station rejected SetChargingProfile repeatedly, so the site cap may not hold for its connector. See PROFILE_FAILURES_TO_STOP."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
+
+  - name: service down fires
+    interval: 1m
+    input_series:
+      - series: 'up{job="services",instance="tariff:8080"}'
+        values: '1x3 0x10'
+      - series: 'up{job="services",instance="sessions:8080"}'
+        values: '1x13'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: services
+              instance: tariff:8080
+            exp_annotations:
+              summary: "tariff:8080 is down"
+              description: "Prometheus could not scrape tariff:8080 for 1 minute."
+              runbook: "docs/runbook.md#signals-worth-alerting-on"
 
   - name: dlq messages fire
     interval: 1m

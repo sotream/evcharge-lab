@@ -1,3 +1,21 @@
+import type { ocpp } from '@evcharge/contracts';
+
+/** Contract limits of StopTxReq.signedMeterData (packages/contracts api.ts): sessions answers 400 above them. */
+export const SIGNED_MAX_ITEMS = 16;
+export const SIGNED_MAX_VALUE_CHARS = 8192;
+
+/**
+ * Every SignedData sampledValue of a StopTransaction.transactionData, for Eichrecht transparency software, clamped to the
+ * contract: values over 8192 chars are dropped and only the first 16 are kept. Exceeding the contract would make sessions
+ * answer 400, the gateway would answer the station `{}` and the session would never complete. `onDropped` gets the count.
+ */
+export function signedMeterData(transactionData: ocpp.StationReq<'StopTransaction'>['transactionData'], onDropped?: (n: number) => void): { format: 'SignedData'; value: string; context?: string }[] {
+  const all = (transactionData ?? []).flatMap((mv) => mv.sampledValue.filter((sv) => sv.format === 'SignedData'));
+  const fitting = all.filter((sv) => sv.value.length <= SIGNED_MAX_VALUE_CHARS).slice(0, SIGNED_MAX_ITEMS);
+  if (fitting.length < all.length) onDropped?.(all.length - fitting.length);
+  return fitting.map((sv) => ({ format: 'SignedData' as const, value: sv.value, ...(sv.context ? { context: sv.context } : {}) }));
+}
+
 /** Token bucket: `ratePerS` tokens per second, burst = ratePerS (ADR 0003 admission control). */
 export class TokenBucket {
   private tokens: number;
