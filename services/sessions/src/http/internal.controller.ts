@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res, UseFilters, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Res, UseFilters, UseGuards } from '@nestjs/common';
 import { api } from '@evcharge/contracts';
 import { InternalTokenGuard } from '@evcharge/platform';
 import type { FastifyReply } from 'fastify';
@@ -42,5 +42,11 @@ export class InternalController {
     const r = await this.ocpp.registerDriver(parse(S.registerDriverReq, body));
     reply.status(r.status);
     return r.body;
+  }
+
+  @Delete('drivers/:driverId')
+  @HttpCode(204)
+  deleteDriver(@Param('driverId') driverId: string): Promise<void> {
+    return this.ocpp.deleteDriver(driverId);
   }
 }

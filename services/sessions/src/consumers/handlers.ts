@@ -7,6 +7,7 @@ import type { events } from '@evcharge/contracts';
 import { type Logger, type Pool, withInbox, withTx } from '@evcharge/platform';
 import { m } from '../metrics';
 import { emitSessionEvent, enqueueCommand, PRODUCER, type TopicNames } from '../outbox-events';
+import { activeSessionsWithStopReason, requestRemoteStop } from '../session-stop';
 import type { SiteSignal } from '../site-signal';
 
 export const STATION_EVENTS_CONSUMER = 'sessions.station-events';
@@ -20,6 +21,7 @@ export class StationEventHandlers {
     private readonly topics: TopicNames,
     private readonly logger: Logger,
     private readonly signal?: SiteSignal,
+    private readonly profileFailures: { alertAfter: number; stopAfter: number } = { alertAfter: 3, stopAfter: 0 },
   ) {}
 
   /** Connector status last-write-wins on the station timestamp; online flag from connect/disconnect. */
@@ -39,6 +41,8 @@ export class StationEventHandlers {
             return;
           }
           case 'station.connected':
+            // A system-requested stop (declined payment, rejected profiles) that could not reach the station is re-issued now.
+            for (const id of await activeSessionsWithStopReason(c, e.data.stationId, 0)) await requestRemoteStop(c, this.topics, id);
             await c.query(
               `UPDATE stations SET online = true, gateway_instance = $2, online_changed_at = $3
                 WHERE station_id = $1 AND (online_changed_at IS NULL OR online_changed_at <= $3::timestamptz)`,
@@ -116,13 +120,24 @@ export class StationEventHandlers {
             }
             return;
           case 'SetChargingProfile':
-            return this.profileResult(c, cmd, d.commandId, accepted);
+            return this.profileResult(c, cmd, d.commandId, accepted, d.outcome);
           default:
             if (!accepted) this.logger.info({ commandId: d.commandId, action: cmd.action, outcome: d.outcome }, 'station command not accepted');
         }
       }),
     );
     if (!out.duplicate && out.result) this.signal?.changed(out.result);
+  }
+
+  /** A station that keeps rejecting profiles ignores the site cap: alert once, optionally stop the session. */
+  private async countProfileRejection(c: Parameters<Parameters<typeof withTx>[1]>[0], sessionId: string): Promise<void> {
+    const { rows } = await c.query<{ site_id: string; profile_failures: number }>('UPDATE active_sessions SET profile_failures = profile_failures + 1 WHERE session_id = $1 RETURNING site_id, profile_failures', [sessionId]);
+    const r = rows[0];
+    if (!r) return;
+    if (r.profile_failures === this.profileFailures.alertAfter) m.profileNoncompliant.inc({ site_id: r.site_id });
+    if (this.profileFailures.stopAfter > 0 && r.profile_failures === this.profileFailures.stopAfter && (await requestRemoteStop(c, this.topics, sessionId, 'profile_noncompliant'))) {
+      this.logger.warn({ sessionId, failures: r.profile_failures }, 'station keeps rejecting charging profiles: stopping the session');
+    }
   }
 
   private async cancelLateReservation(c: Parameters<Parameters<typeof withTx>[1]>[0], commandId: string): Promise<void> {
@@ -149,8 +164,11 @@ export class StationEventHandlers {
     cmd: { session_id: string | null; limit_w: number | null; valid_to: Date | null },
     commandId: string,
     accepted: boolean,
+    outcome: string,
   ): Promise<string | undefined> {
     if (!cmd.session_id) return undefined;
+    // M10: only an explicit Rejected counts (StationOffline/Timeout are connectivity or backend side, ADR 0000 degradation).
+    if (outcome === 'Rejected') await this.countProfileRejection(c, cmd.session_id);
     let siteId: string | undefined;
     if (accepted && cmd.limit_w !== null && cmd.valid_to) {
       const { rows } = await c.query<{ site_id: string }>(
@@ -159,7 +177,8 @@ export class StationEventHandlers {
             confirmed_valid_to = CASE WHEN confirmed_valid_to IS NULL OR confirmed_valid_to <= $3 THEN $3 ELSE confirmed_valid_to END,
             possible_limit_w = CASE WHEN pending_command_id = $4 THEN NULL ELSE possible_limit_w END,
             possible_valid_to = CASE WHEN pending_command_id = $4 THEN NULL ELSE possible_valid_to END,
-            pending_command_id = CASE WHEN pending_command_id = $4 THEN NULL ELSE pending_command_id END
+            pending_command_id = CASE WHEN pending_command_id = $4 THEN NULL ELSE pending_command_id END,
+            profile_failures = 0
           WHERE session_id = $1 RETURNING site_id`,
         [cmd.session_id, cmd.limit_w, cmd.valid_to, commandId],
       );

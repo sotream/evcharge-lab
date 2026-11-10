@@ -9,6 +9,8 @@ export const m = {
   reservationTransitions: counter({ name: 'sessions_reservation_transitions_total', help: 'Reservation status transitions', labelNames: ['to'] as const }),
   sessionsStarted: counter({ name: 'sessions_started_total', help: 'Sessions created from StartTransaction' }),
   sessionsCompleted: counter({ name: 'sessions_completed_total', help: 'Sessions completed', labelNames: ['reason'] as const }),
+  stoppedOnAuthDecline: counter({ name: 'sessions_stopped_on_auth_decline_total', help: 'Sessions sent a RemoteStop because the payment authorization was declined' }),
+  profileNoncompliant: counter({ name: 'sessions_profile_noncompliant_total', help: 'Sessions whose station rejected charging profiles PROFILE_FAILURES_TO_ALERT times in a row', labelNames: ['site_id'] as const }),
   activeSessions: gauge({ name: 'sessions_active', help: 'Active sessions (refreshed periodically)' }),
   commands: counter({ name: 'sessions_station_commands_total', help: 'Station commands enqueued via outbox', labelNames: ['action'] as const }),
   commandResults: counter({ name: 'sessions_command_results_total', help: 'Station command results consumed', labelNames: ['action', 'outcome'] as const }),

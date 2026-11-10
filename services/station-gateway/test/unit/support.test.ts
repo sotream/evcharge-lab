@@ -3,7 +3,7 @@ import { ocpp } from '@evcharge/contracts';
 import { describe, expect, it } from 'vitest';
 import { AllocationTracker, allocationValidTo, replacesAllocationWithoutExpiry, safeShareProfile, startDefaultProfile } from '../../src/charging';
 import { parseBasicAuth, verifySecret } from '../../src/credentials';
-import { TokenBucket, TtlLru } from '../../src/util';
+import { signedMeterData, TokenBucket, TtlLru } from '../../src/util';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 const basic = (s: string) => `Basic ${Buffer.from(s).toString('base64')}`;
@@ -19,6 +19,30 @@ describe('credentials', () => {
     expect(parseBasicAuth(undefined)).toBeUndefined();
     expect(parseBasicAuth('Bearer x')).toBeUndefined();
     expect(parseBasicAuth(basic('nocolon'))).toBeUndefined();
+  });
+});
+
+describe('signedMeterData', () => {
+  it('extracts only SignedData sampled values from transactionData', () => {
+    const ts = '2026-11-10T10:00:00Z';
+    const out = signedMeterData([
+      { timestamp: ts, sampledValue: [{ value: '8500' }, { value: 'OCMF|sig', format: 'SignedData', context: 'Transaction.End' }] },
+      { timestamp: ts, sampledValue: [{ value: '1', format: 'Raw' }] },
+    ]);
+    expect(out).toEqual([{ format: 'SignedData', value: 'OCMF|sig', context: 'Transaction.End' }]);
+  });
+});
+
+const sv = (value: string) => ({ value, format: 'SignedData' as const });
+describe('signedMeterData limits', () => {
+  it('keeps the first 16 values and drops one over 8192 chars, reporting the count', () => {
+    const data = [{ timestamp: '2026-11-10T10:00:00Z', sampledValue: [sv('x'.repeat(10_000)), ...Array.from({ length: 20 }, (_, i) => sv(`v${i}`))] }];
+    let dropped = 0;
+    const out = signedMeterData(data, (n) => (dropped = n));
+    expect(out).toHaveLength(16);
+    expect(out[0]?.value).toBe('v0');
+    expect(out.every((o) => o.value.length <= 8192)).toBe(true);
+    expect(dropped).toBe(5); // the oversize one and the 4 beyond 16
   });
 });
 

@@ -32,6 +32,7 @@ import type { FastifyInstance } from 'fastify';
 import { AllocationService } from './allocation/allocation.service';
 import { seedCatalogIfEmpty } from './catalog/seeder';
 import type { Config } from './config';
+import { BILLING_EVENTS_CONSUMER, BillingEventsHandler } from './consumers/billing-handler';
 import { StationEventHandlers } from './consumers/handlers';
 import { CatalogService } from './driver/catalog.service';
 import { DriverService } from './driver/driver.service';
@@ -50,6 +51,7 @@ export interface AppTopics {
   commandResults: string;
   stationCommands: string;
   sessionEvents: string;
+  billingEvents: string;
 }
 
 export interface AppOptions {
@@ -59,7 +61,7 @@ export interface AppOptions {
   /** Topic names; tests use unique topics. */
   topics?: Partial<AppTopics>;
   /** Consumer group ids; tests use unique groups. */
-  groups?: { stationEvents: string; commandResults: string };
+  groups?: { stationEvents: string; commandResults: string; billingEvents?: string };
   /** 0 picks a free port (tests). */
   port?: number;
   handleSignals?: boolean;
@@ -120,6 +122,7 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
     commandResults: opts.topics?.commandResults ?? Topics.StationCommandResults,
     stationCommands: opts.topics?.stationCommands ?? Topics.StationCommands,
     sessionEvents: opts.topics?.sessionEvents ?? Topics.SessionEvents,
+    billingEvents: opts.topics?.billingEvents ?? Topics.BillingEvents,
   };
   const groups = opts.groups ?? { stationEvents: ConsumerGroups.SessionsStationEvents, commandResults: ConsumerGroups.SessionsCommandResults };
   const workers = opts.workers ?? config.WORKERS_ENABLED;
@@ -158,8 +161,9 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
   const drivers = new DriverService(pool, topics, router);
   const catalog = new CatalogService(router);
   const allocation = new AllocationService(allocationPool, redis, allocator, topics, { periodS: config.ALLOCATION_PERIOD_S, tickMs: config.ALLOCATION_TICK_MS, concurrency: config.ALLOCATION_CONCURRENCY }, logger, signal);
-  const handlers = new StationEventHandlers(pool, topics, logger, signal);
-  const maintenance = new Maintenance(pool, topics, config.SWEEPER_INTERVAL_MS, logger);
+  const handlers = new StationEventHandlers(pool, topics, logger, signal, { alertAfter: config.PROFILE_FAILURES_TO_ALERT, stopAfter: config.PROFILE_FAILURES_TO_STOP });
+  const billingHandler = new BillingEventsHandler(pool, topics, config.STOP_ON_AUTH_DECLINE, logger);
+  const maintenance = new Maintenance(pool, topics, config.SWEEPER_INTERVAL_MS, config.STALE_SESSION_AFTER_H * 36e5, logger);
   const relay = new OutboxRelay({ pool, producer, logger });
 
   registerReadinessCheck('postgres', pgReadinessCheck(pool));
@@ -193,6 +197,10 @@ export async function createSessionsApp(opts: AppOptions): Promise<SessionsApp> 
       {
         name: 'command-results',
         consumer: createConsumer({ brokers: config.KAFKA_BROKERS, groupId: groups.commandResults, topics: [topics.commandResults], schema: events.StationCommandCompleted, handler: (e) => handlers.commandResult(e), logger }),
+      },
+      {
+        name: 'billing-events',
+        consumer: createConsumer({ brokers: config.KAFKA_BROKERS, groupId: groups.billingEvents ?? BILLING_EVENTS_CONSUMER, topics: [topics.billingEvents], schema: events.BillingEvent, handler: (e) => billingHandler.handle(e), logger }),
       },
     ];
     svc.lifecycle.onShutdown('outbox-relay', () => relay.stop());

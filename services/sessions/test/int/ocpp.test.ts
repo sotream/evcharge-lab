@@ -2,6 +2,7 @@ import { fleet } from '@evcharge/contracts';
 /* oxlint-disable no-await-in-loop */
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { closeStaleSessions, revertUnconfirmedStops } from '../../src/workers/maintenance';
 import { type Harness, SEED, startHarness, waitFor } from './harness';
 
 let h: Harness;
@@ -129,6 +130,129 @@ describe('internal OCPP API (ADR 0003)', () => {
     await waitFor(() => h.sessionEvents.some((e) => e.type === 'reservation.ended' && e.data.reservationId === r.body.reservationId && e.data.reason === 'Used'));
     expect((await h.db.pool.query('SELECT reservation_id FROM sessions WHERE session_id = $1', [start.body.sessionId])).rows[0].reservation_id).toBe(r.body.reservationId);
   });
+
+  it('flags a regressed meter and an implausible energy on session.completed', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-003', 1, d.idTag); // harness starts with meterStartWh = 1000
+    await h.stopTx('st-0001-003', s.body.transactionId, undefined, 99_999_999);
+    const ev = await waitFor(() => types('session.completed', s.body.sessionId)[0]);
+    expect((ev.data as { energyFlag?: string }).energyFlag).toBe('implausible');
+    expect((await h.db.pool.query('SELECT energy_flag FROM sessions WHERE session_id = $1', [s.body.sessionId])).rows[0].energy_flag).toBe('implausible');
+  });
+});
+
+describe('driver deletion hardening', () => {
+  it('a start waits for a deletion in progress (driver row lock) instead of racing its active-session check', async () => {
+    const d = await h.registerDriver();
+    const c = await h.db.pool.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SELECT 1 FROM drivers WHERE driver_id = $1 FOR UPDATE', [d.driverId]); // what DELETE /internal/drivers/:id holds
+      let done = false;
+      const start = h.startTx('st-0001-003', 1, d.idTag).then((r) => {
+        done = true;
+        return r;
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(done).toBe(false);
+      await c.query('COMMIT');
+      const r = await start;
+      expect(r.status).toBe(200);
+      await h.stopTx('st-0001-003', r.body.transactionId);
+    } finally {
+      c.release();
+    }
+  });
+});
+
+describe('energy flag regression', () => {
+  it('flags a meter that went backwards as meter_regressed', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-003', 1, d.idTag); // harness starts at meterStartWh = 1000
+    await h.stopTx('st-0001-003', s.body.transactionId, undefined, 500);
+    const ev = await waitFor(() => types('session.completed', s.body.sessionId)[0]);
+    expect((ev.data as { energyFlag?: string }).energyFlag).toBe('meter_regressed');
+  });
+});
+
+describe('driver deletion', () => {
+  it('blocks the idTag, keeps driver_id, is idempotent, and is refused with a charging session', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-003', 1, d.idTag);
+    expect((await h.http('DELETE', `/internal/drivers/${d.driverId}`)).status).toBe(409);
+    await h.stopTx('st-0001-003', s.body.transactionId);
+    expect((await h.http('DELETE', `/internal/drivers/${d.driverId}`)).status).toBe(204);
+    expect((await h.http('DELETE', `/internal/drivers/${d.driverId}`)).status).toBe(204);
+    expect((await h.http('POST', '/internal/ocpp/authorize', { body: { stationId: 'st-0001-001', idTag: d.idTag } })).body.idTagInfo.status).toBe('Blocked');
+    const row = (await h.db.pool.query('SELECT id_tag, blocked FROM drivers WHERE driver_id = $1', [d.driverId])).rows[0];
+    expect(row.blocked).toBe(true);
+    expect(row.id_tag).toMatch(/^deleted-[0-9a-f]{12}$/);
+  });
+});
+
+describe('signed meter data', () => {
+  it('stores SignedData from StopTransaction and returns it on the session', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-003', 1, d.idTag);
+    const signedMeterData = [{ format: 'SignedData', value: 'OCMF|{"FV":"1.0"}|{"SD":"abc"}', context: 'Transaction.End' }];
+    const r = await h.stopTx('st-0001-003', s.body.transactionId, undefined, 6000, { signedMeterData });
+    expect(r.status).toBe(200);
+    const got = await h.driver(d.driverId)('GET', `/v1/sessions/${s.body.sessionId}`);
+    expect(got.body.signedMeterData).toEqual(signedMeterData);
+  });
+});
+
+describe('stuck Stopping sweeper', () => {
+  it('reverts a Stopping session whose RemoteStop got no result; a late Accepted for it changes nothing and the stop still completes once', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-001', 2, d.idTag);
+    const api = h.driver(d.driverId);
+    expect((await api('POST', `/v1/sessions/${s.body.sessionId}/stop`)).body.status).toBe('Stopping');
+    const first = await waitFor(() => h.commands.find((c) => c.data.action === 'RemoteStopTransaction' && (c.data.payload as { transactionId?: number }).transactionId === s.body.transactionId));
+    await h.db.pool.query("UPDATE commands SET expires_at = now() - interval '1 minute' WHERE command_id = $1", [first.data.commandId]);
+    expect(await revertUnconfirmedStops(h.db.pool)).toBe(1);
+    expect((await api('GET', `/v1/sessions/${s.body.sessionId}`)).body.status).toBe('Active');
+
+    // Review Focus 5: the station's Accepted arrives after the sweeper gave up on that command
+    await h.publishCommandResult(first.data.commandId, 'st-0001-001', 'RemoteStopTransaction', 'Accepted');
+    await new Promise((r) => setTimeout(r, 500));
+    expect((await api('GET', `/v1/sessions/${s.body.sessionId}`)).body.status).toBe('Active');
+    expect((await h.db.pool.query('SELECT outcome FROM commands WHERE command_id = $1', [first.data.commandId])).rows[0].outcome).toBe('Expired');
+
+    expect((await api('POST', `/v1/sessions/${s.body.sessionId}/stop`)).body.status).toBe('Stopping');
+    expect((await h.stopTx('st-0001-001', s.body.transactionId)).status).toBe(200);
+    await waitFor(() => types('session.completed', s.body.sessionId).length >= 1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(types('session.completed', s.body.sessionId)).toHaveLength(1);
+    expect((await api('GET', `/v1/sessions/${s.body.sessionId}`)).body.status).toBe('Completed');
+  });
+});
+
+describe('stale session reaper', () => {
+  it('closes a stale session as StaleClosed, and a late StopTransaction is accepted without a second completion', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-004', 1, d.idTag);
+    const { transactionId, sessionId } = s.body;
+    // Staleness is server time (the session_id's uuidv7 timestamp): a threshold of 0 makes every existing session stale.
+    expect(await closeStaleSessions(h.db.pool, h.topics, 0)).toBeGreaterThanOrEqual(1);
+    const ev = await waitFor(() => types('session.completed', sessionId)[0]);
+    expect(ev.data).toMatchObject({ stopReason: 'StaleClosed', energyWh: 0, energyFlag: 'stale' });
+
+    // Review Focus 2
+    const r = await h.stopTx('st-0001-004', transactionId, undefined, 20_000);
+    expect(r.status).toBe(200);
+    await new Promise((res) => setTimeout(res, 500));
+    expect(types('session.completed', sessionId)).toHaveLength(1);
+  });
+
+  it('does not reap a fresh session whose station clock is days behind', async () => {
+    const d = await h.registerDriver();
+    const s = await h.startTx('st-0001-002', 1, d.idTag);
+    await h.db.pool.query("UPDATE active_sessions SET started_at = now() - interval '3 days' WHERE transaction_id = $1", [s.body.transactionId]);
+    expect(await closeStaleSessions(h.db.pool, h.topics, 48 * 36e5)).toBe(0);
+    expect((await h.db.pool.query('SELECT 1 FROM active_sessions WHERE transaction_id = $1', [s.body.transactionId])).rowCount).toBe(1);
+    await h.stopTx('st-0001-002', s.body.transactionId);
+  });
 });
 
 describe('driver commands', () => {
@@ -242,6 +366,16 @@ describe('ad-hoc charging with unknown idTags (ACCEPT_UNKNOWN_IDTAGS)', () => {
     expect(start.body.idTagInfo.status).toBe('Accepted');
     const { rows } = await adhoc.db.pool.query('SELECT driver_id FROM sessions WHERE session_id = $1', [start.body.sessionId]);
     expect(rows[0].driver_id).toBeNull();
+  });
+
+  it('with ACCEPT_UNKNOWN_IDTAGS the idTag of a deleted account is Blocked, not ad-hoc Accepted', async () => {
+    const d = await adhoc.registerDriver();
+    expect((await adhoc.http('POST', '/internal/ocpp/authorize', { body: { stationId: 'st-0001-001', idTag: d.idTag } })).body.idTagInfo.status).toBe('Accepted');
+    expect((await adhoc.http('DELETE', `/internal/drivers/${d.driverId}`)).status).toBe(204);
+    expect((await adhoc.http('POST', '/internal/ocpp/authorize', { body: { stationId: 'st-0001-001', idTag: d.idTag } })).body.idTagInfo.status).toBe('Blocked');
+    const start = await adhoc.startTx('st-0001-001', 1, d.idTag);
+    expect(start.body.idTagInfo.status).toBe('Blocked');
+    expect((await adhoc.http('POST', '/internal/ocpp/authorize', { body: { stationId: 'st-0001-001', idTag: 'SOMEONE-ELSE' } })).body.idTagInfo.status).toBe('Accepted');
   });
 });
 

@@ -1,5 +1,6 @@
 /* oxlint-disable no-await-in-loop */
 import { events, fleet, ocpp } from '@evcharge/contracts';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Harness, startHarness, waitFor } from './harness';
 
@@ -87,4 +88,55 @@ describe('two-phase profile apply (ADR 0006): a decrease that is never confirmed
     // sanity: everything that can be in force now adds up to exactly the allocation
     expect(await inForce()).toBe(2 * 7580 + 6 * defaults.startW);
   });
+});
+
+const metric = async (hh: Harness, name: string) => {
+  const text = (await hh.http('GET', '/metrics', { token: null })).body as string;
+  return text.split('\n').filter((l) => l.startsWith(name)).reduce((a, l) => a + Number(l.split(' ').pop()), 0);
+};
+const hasStop = (hh: Harness, transactionId: number) => hh.commands.some((c) => c.data.action === 'RemoteStopTransaction' && (c.data.payload as { transactionId?: number }).transactionId === transactionId);
+async function profileResults(hh: Harness, sessionId: string, station: string, outcome: 'Rejected' | 'Timeout', n: number) {
+  for (let i = 0; i < n; i++) {
+    const commandId = randomUUID();
+    const { rows } = await hh.db.pool.query<{ started_at: Date }>('SELECT started_at FROM active_sessions WHERE session_id = $1', [sessionId]);
+    await hh.db.pool.query(
+      "INSERT INTO commands (command_id, station_id, action, session_id, session_started_at, expires_at) VALUES ($1, $2, 'SetChargingProfile', $3, $4, now() + interval '1 minute')",
+      [commandId, station, sessionId, rows[0]?.started_at],
+    );
+    await hh.publishCommandResult(commandId, station, 'SetChargingProfile', outcome);
+    await waitFor(async () => (await hh.db.pool.query('SELECT 1 FROM commands WHERE command_id = $1 AND outcome = $2', [commandId, outcome])).rowCount === 1);
+  }
+}
+
+
+describe('stations that keep rejecting profiles (M10)', () => {
+  it('counts three Rejected results once, never stops by default, and ignores Timeout', async () => {
+    const hh = await startHarness({ sites: 1, stationsPerSite: 4 });
+    try {
+      const before = await metric(hh, 'sessions_profile_noncompliant_total');
+      const s = (await hh.startTx('st-0001-001', 2, 'anonymous')).body as { transactionId: number; sessionId: string };
+      await profileResults(hh, s.sessionId, 'st-0001-001', 'Timeout', 3);
+      expect(await metric(hh, 'sessions_profile_noncompliant_total')).toBe(before);
+      await profileResults(hh, s.sessionId, 'st-0001-001', 'Rejected', 3);
+      expect(await metric(hh, 'sessions_profile_noncompliant_total')).toBe(before + 1);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(hasStop(hh, s.transactionId)).toBe(false);
+    } finally {
+      await hh.close();
+    }
+  }, 60_000);
+
+  it('sends RemoteStop after PROFILE_FAILURES_TO_STOP Rejected results, but not after Timeouts', async () => {
+    const hh = await startHarness({ sites: 1, stationsPerSite: 4, env: { PROFILE_FAILURES_TO_STOP: '3' } });
+    try {
+      const t = (await hh.startTx('st-0001-001', 2, 'anonymous')).body as { transactionId: number; sessionId: string };
+      await profileResults(hh, t.sessionId, 'st-0001-001', 'Timeout', 3);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(hasStop(hh, t.transactionId)).toBe(false);
+      await profileResults(hh, t.sessionId, 'st-0001-001', 'Rejected', 3);
+      await waitFor(() => hasStop(hh, t.transactionId));
+    } finally {
+      await hh.close();
+    }
+  }, 60_000);
 });

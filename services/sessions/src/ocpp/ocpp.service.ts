@@ -11,6 +11,7 @@ import { type api, fleet } from '@evcharge/contracts';
 import { type Logger, type Pool, type PoolClient, withTx } from '@evcharge/platform';
 import type { z } from 'zod';
 import { ProblemError } from '../http/problem';
+import { energyFlag, type EnergyFlag } from '../energy';
 import { m } from '../metrics';
 import { emitSessionEvent, type TopicNames } from '../outbox-events';
 import { markSiteDue, type SiteSignal } from '../site-signal';
@@ -36,12 +37,14 @@ export function stationTime(ts: string, now = Date.now()): { at: Date; clamped: 
 }
 
 /** Unknown idTags are ad-hoc charging (driverless session, invoiced unpaid per ADR 0007) only when the operator allows it. */
+const sha256Hex = (s: string): string => createHash('sha256').update(s).digest('hex');
+
 function idTagStatus(driver: { driver_id: string | null; blocked: boolean | null } | undefined, acceptUnknown: boolean): IdTagStatus {
   if (!driver?.driver_id) return acceptUnknown ? 'Accepted' : 'Invalid';
   return driver.blocked ? 'Blocked' : 'Accepted';
 }
 
-interface ActiveRow {
+export interface ActiveRow {
   transaction_id: number;
   session_id: string;
   started_at: Date;
@@ -49,6 +52,7 @@ interface ActiveRow {
   station_id: string;
   connector_id: number;
   limit_w: number | null;
+  max_w: number;
 }
 
 export class OcppService {
@@ -70,12 +74,15 @@ export class OcppService {
     );
     const r = rows[0];
     if (!r) throw new ProblemError(404, 'unknown_station', 'Unknown station', `station ${stationId} is not registered`);
-    return { stationId: r.station_id, siteId: r.site_id, secretSha256: r.secret_sha256, enabled: r.enabled, chargingDefaults: fleet.chargingDefaults(r.cap_w, Number(r.n)) };
+    return { stationId: r.station_id, siteId: r.site_id, secretSha256: r.secret_sha256, enabled: r.enabled, capW: r.cap_w, chargingDefaults: fleet.chargingDefaults(r.cap_w, Number(r.n)) };
   }
 
   async authorize(req: AuthorizeReq): Promise<AuthorizeRes> {
-    const { rows } = await this.pool.query<{ driver_id: string; blocked: boolean }>('SELECT driver_id, blocked FROM drivers WHERE id_tag = $1', [req.idTag]);
-    return { idTagInfo: { status: idTagStatus(rows[0], this.acceptUnknownIdTags) } };
+    const { rows } = await this.pool.query<{ driver_id: string; blocked: boolean; tag_deleted: boolean }>(
+      'SELECT driver_id, blocked, false AS tag_deleted FROM drivers WHERE id_tag = $1 UNION ALL SELECT NULL, NULL, true FROM deleted_id_tags WHERE id_tag_sha256 = $2 LIMIT 1',
+      [req.idTag, sha256Hex(req.idTag)],
+    );
+    return { idTagInfo: { status: rows[0]?.tag_deleted ? 'Blocked' : idTagStatus(rows[0], this.acceptUnknownIdTags) } };
   }
 
   async registerDriver(req: RegisterDriverReq): Promise<{ status: number; body: { driverId: string; idTag: string } }> {
@@ -86,22 +93,40 @@ export class OcppService {
     throw new ProblemError(409, 'driver_conflict', 'Driver or idTag already registered', 'driverId or idTag is already registered with a different value');
   }
 
+  /**
+   * Account deletion: the driver can no longer authorize (blocked, idTag replaced; 8 + 12 hex = the 20 char limit) but
+   * driver_id, sessions and invoices stay for the retention period. 409 while a session is Active or Stopping. Idempotent.
+   */
+  async deleteDriver(driverId: string): Promise<void> {
+    await withTx(this.pool, async (c) => {
+      await c.query('SELECT 1 FROM drivers WHERE driver_id = $1 FOR UPDATE', [driverId]);
+      const active = await c.query('SELECT 1 FROM active_sessions WHERE driver_id = $1 LIMIT 1', [driverId]);
+      if (active.rowCount) throw new ProblemError(409, 'active_session', 'Active session', 'stop the charging session before deleting the account');
+      await c.query("INSERT INTO deleted_id_tags (id_tag_sha256) SELECT encode(sha256(convert_to(id_tag, 'UTF8')), 'hex') FROM drivers WHERE driver_id = $1 AND id_tag NOT LIKE 'deleted-%' ON CONFLICT DO NOTHING", [driverId]);
+      await c.query("UPDATE drivers SET blocked = true, id_tag = 'deleted-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 12) WHERE driver_id = $1 AND id_tag NOT LIKE 'deleted-%'", [driverId]);
+    });
+  }
+
   async startTransaction(req: StartTxReq): Promise<StartTxRes> {
     return this.timed('start', async () => {
       const key = messageKey(req.stationId, req.ocppMessageId, 'StartTransaction', req);
       const out = await withTx(this.pool, async (c) => {
         const replay = await this.claim(c, key, 'StartTransaction');
         if (replay !== undefined) return { replay: true as const, res: replay as StartTxRes };
-        const { rows } = await c.query<{ connector_pk: string; site_id: string; tariff_id: string; max_power_w: number; min_power_w: number; driver_id: string | null; blocked: boolean | null }>(
-          `SELECT c.connector_pk, c.site_id, c.tariff_id, c.max_power_w, c.min_power_w, d.driver_id, d.blocked
+        // Shared lock on the driver row: DELETE /internal/drivers/:id takes it FOR UPDATE before checking for active sessions,
+        // so a start cannot slip in between that check and the idTag replacement (a LEFT JOIN side cannot be locked below).
+        await c.query('SELECT 1 FROM drivers WHERE id_tag = $1 FOR SHARE', [req.idTag]);
+        const { rows } = await c.query<{ connector_pk: string; site_id: string; tariff_id: string; max_power_w: number; min_power_w: number; driver_id: string | null; blocked: boolean | null; tag_deleted: boolean }>(
+          `SELECT c.connector_pk, c.site_id, c.tariff_id, c.max_power_w, c.min_power_w, d.driver_id, d.blocked,
+                  EXISTS (SELECT 1 FROM deleted_id_tags WHERE id_tag_sha256 = $4) AS tag_deleted
              FROM connectors c LEFT JOIN drivers d ON d.id_tag = $3
             WHERE c.station_id = $1 AND c.connector_id = $2
               FOR NO KEY UPDATE OF c`, // serialises StartTransactions on one connector (the replace-then-insert below races otherwise); NO KEY so FK checks (KEY SHARE) do not queue behind it
-          [req.stationId, req.connectorId, req.idTag],
+          [req.stationId, req.connectorId, req.idTag, sha256Hex(req.idTag)],
         );
         const ctx = rows[0];
         if (!ctx) throw new ProblemError(422, 'unknown_connector', 'Unknown connector', `${req.stationId} has no connector ${req.connectorId}`);
-        const status = idTagStatus(ctx, this.acceptUnknownIdTags);
+        const status = ctx.tag_deleted ? 'Blocked' : idTagStatus(ctx, this.acceptUnknownIdTags);
         const { at: startedAt, clamped } = stationTime(req.timestamp);
         if (clamped) this.logger.warn({ stationId: req.stationId, timestamp: req.timestamp }, 'StartTransaction timestamp out of range, using now');
 
@@ -174,7 +199,7 @@ export class OcppService {
         let siteId: string | undefined;
         const active = del.rows[0];
         if (active) {
-          await this.complete(c, active, req.meterStopWh, stoppedAt, req.reason ?? 'Local', false);
+          await this.complete(c, active, req.meterStopWh, stoppedAt, req.reason ?? 'Local', false, req.signedMeterData);
           sessionId = active.session_id;
           siteId = active.site_id;
           await markSiteDue(c, active.site_id);
@@ -213,50 +238,8 @@ export class OcppService {
     return rows[0].response;
   }
 
-  /** Completes a session row (partition-pruned by started_at) and emits session.completed. */
-  private async complete(c: PoolClient, a: ActiveRow, meterStopWh: number, stoppedAt: Date, reason: string, superseded: boolean): Promise<void> {
-    const { rows } = await c.query<{
-      session_id: string;
-      transaction_id: number;
-      driver_id: string | null;
-      site_id: string;
-      station_id: string;
-      connector_id: number;
-      tariff_id: string;
-      meter_start_wh: string;
-      meter_stop_wh: string;
-      energy_wh: string;
-      started_at: Date;
-      stopped_at: Date;
-      stop_reason: string;
-    }>(
-      `UPDATE sessions SET status = 'Completed',
-              meter_stop_wh = greatest(meter_start_wh, $3::bigint),
-              energy_wh = greatest(0, $3::bigint - meter_start_wh),
-              stopped_at = greatest(started_at, $4::timestamptz),
-              stop_reason = $5, final_limit_w = $6
-        WHERE session_id = $1 AND started_at = $2
-      RETURNING session_id, transaction_id, driver_id, site_id, station_id, connector_id, tariff_id, meter_start_wh, meter_stop_wh, energy_wh, started_at, stopped_at, stop_reason`,
-      [a.session_id, a.started_at, meterStopWh, stoppedAt, reason, a.limit_w],
-    );
-    const s = rows[0];
-    if (!s) return;
-    await emitSessionEvent(c, this.topics, 'session.completed', s.site_id, {
-      sessionId: s.session_id,
-      transactionId: s.transaction_id,
-      driverId: s.driver_id,
-      siteId: s.site_id,
-      stationId: s.station_id,
-      connectorId: s.connector_id,
-      tariffId: s.tariff_id,
-      meterStartWh: Number(s.meter_start_wh),
-      meterStopWh: Number(s.meter_stop_wh),
-      energyWh: Number(s.energy_wh),
-      startedAt: s.started_at.toISOString(),
-      stoppedAt: s.stopped_at.toISOString(),
-      stopReason: s.stop_reason,
-    });
-    m.sessionsCompleted.inc({ reason: superseded ? 'Superseded' : reason });
+  private complete(c: PoolClient, a: ActiveRow, meterStopWh: number, stoppedAt: Date, reason: string, _superseded: boolean, signedMeterData?: unknown[]): Promise<void> {
+    return completeSession(c, this.topics, a, meterStopWh, stoppedAt, reason, undefined, signedMeterData);
   }
 
   private async timed<T>(op: string, fn: () => Promise<T>): Promise<T> {
@@ -270,6 +253,55 @@ export class OcppService {
       throw err;
     }
   }
+}
+
+/** Completes a session row (partition-pruned by a.started_at = sessions.started_at) and emits session.completed. */
+export async function completeSession(c: PoolClient, topics: TopicNames, a: ActiveRow, meterStopWh: number, stoppedAt: Date, reason: string, flagOverride?: EnergyFlag, signedMeterData?: unknown[]): Promise<void> {
+  const start = await c.query<{ meter_start_wh: string }>('SELECT meter_start_wh FROM sessions WHERE session_id = $1 AND started_at = $2', [a.session_id, a.started_at]);
+  const flag = flagOverride ?? energyFlag(Number(start.rows[0]?.meter_start_wh ?? 0), meterStopWh, a.started_at, stoppedAt, a.max_w);
+  const { rows } = await c.query<{
+    session_id: string;
+    transaction_id: number;
+    driver_id: string | null;
+    site_id: string;
+    station_id: string;
+    connector_id: number;
+    tariff_id: string;
+    meter_start_wh: string;
+    meter_stop_wh: string;
+    energy_wh: string;
+    started_at: Date;
+    stopped_at: Date;
+    stop_reason: string;
+  }>(
+    `UPDATE sessions SET status = 'Completed',
+            meter_stop_wh = greatest(meter_start_wh, $3::bigint),
+            energy_wh = greatest(0, $3::bigint - meter_start_wh),
+            stopped_at = greatest(started_at, $4::timestamptz),
+            stop_reason = $5, final_limit_w = $6, energy_flag = $7, signed_meter_data = $8
+      WHERE session_id = $1 AND started_at = $2
+    RETURNING session_id, transaction_id, driver_id, site_id, station_id, connector_id, tariff_id, meter_start_wh, meter_stop_wh, energy_wh, started_at, stopped_at, stop_reason`,
+    [a.session_id, a.started_at, meterStopWh, stoppedAt, reason, a.limit_w, flag, signedMeterData?.length ? JSON.stringify(signedMeterData) : null],
+  );
+  const s = rows[0];
+  if (!s) return;
+  await emitSessionEvent(c, topics, 'session.completed', s.site_id, {
+    sessionId: s.session_id,
+    transactionId: s.transaction_id,
+    driverId: s.driver_id,
+    siteId: s.site_id,
+    stationId: s.station_id,
+    connectorId: s.connector_id,
+    tariffId: s.tariff_id,
+    meterStartWh: Number(s.meter_start_wh),
+    meterStopWh: Number(s.meter_stop_wh),
+    energyWh: Number(s.energy_wh),
+    startedAt: s.started_at.toISOString(),
+    stoppedAt: s.stopped_at.toISOString(),
+    stopReason: s.stop_reason,
+    energyFlag: flag,
+  });
+  m.sessionsCompleted.inc({ reason: reason });
 }
 
 /**

@@ -26,6 +26,7 @@ import { AllocationTracker, safeShareProfile } from './charging';
 import type { GatewayConfig } from './config';
 import { CredentialStore, parseBasicAuth, verifySecret } from './credentials';
 import { CommandDispatcher, publishCommandResult, type ChannelMessage, type DispatcherOptions } from './dispatcher';
+import { SiteDrawTracker } from './site-draw';
 import { gatewayMetrics, type GatewayMetrics } from './metrics';
 import { defaultTopics, EventPublisher, type GatewayTopics } from './publisher';
 import { RouteRegistry } from './registry';
@@ -65,6 +66,7 @@ export class StationGateway implements GatewayIntrospection {
   readonly topics: GatewayTopics;
   readonly connections = new Map<string, StationConnection>();
   readonly allocations = new AllocationTracker();
+  readonly siteDraw: SiteDrawTracker;
   readonly health = new HealthRegistry();
   service!: RunningService;
 
@@ -94,6 +96,7 @@ export class StationGateway implements GatewayIntrospection {
     this.instance = config.GATEWAY_INSTANCE_ID;
     this.logger = (opts.logger ?? createLogger({ service: config.SERVICE_NAME, level: config.LOG_LEVEL })).child({ gateway: this.instance });
     this.metrics = gatewayMetrics();
+    this.siteDraw = new SiteDrawTracker(this.metrics, this.instance);
     this.topics = { ...defaultTopics(), ...opts.topics };
     this.redis = createRedis(config.REDIS_URL, { logger: this.logger });
     this.sub = createRedis(config.REDIS_URL, { logger: this.logger, commandTimeoutMs: 5000 });
@@ -150,6 +153,7 @@ export class StationGateway implements GatewayIntrospection {
       metrics: this.metrics,
       logger: this.logger,
       allocations: this.allocations,
+      siteDraw: this.siteDraw,
       commandQueue: config.GATEWAY_COMMAND_QUEUE,
       callTimeoutMs: config.GATEWAY_CALL_TIMEOUT_S * 1000,
       replayThresholdS: config.REPLAY_THRESHOLD_S,
@@ -239,6 +243,7 @@ export class StationGateway implements GatewayIntrospection {
     this.every(config.ROUTE_REFRESH_S * 1000, () => this.refreshRoutes());
     this.every(config.WS_PING_INTERVAL_S * 1000, () => this.pingSweep());
     this.every(this.opts.allocationSweepMs ?? 1000, () => this.allocationSweep());
+    this.every(10_000, () => this.siteDraw.expire());
     logger.info({ instance: this.instance, url: svc.url }, 'station gateway ready');
   }
 
@@ -419,7 +424,10 @@ export class StationGateway implements GatewayIntrospection {
     const parent = msg.traceparent ? extractTraceContext({ traceparent: msg.traceparent }) : otelContext.active();
     void inSpan(`command ${cmd.action}`, { kind: SpanKind.CONSUMER, parent, attributes: { 'ocpp.station_id': cmd.stationId, 'command.id': cmd.commandId } }, async () => {
       const finish = (outcome: Parameters<typeof publishCommandResult>[4], response?: Record<string, unknown>) =>
-        publishCommandResult(this.publisher, this.topics, this.logger, cmd, outcome, response).catch(() => {});
+        publishCommandResult(this.publisher, this.topics, this.logger, cmd, outcome, response).catch((err: unknown) => {
+          this.metrics.commandResultPublishFailed.inc({ action: cmd.action });
+          this.logger.error({ commandId: cmd.commandId, action: cmd.action, err: err instanceof Error ? err.message : String(err) }, 'command result publish failed');
+        });
       const conn = this.connections.get(cmd.stationId);
       if (!conn) {
         this.metrics.commands.inc({ action: cmd.action, outcome: 'StationOffline' });

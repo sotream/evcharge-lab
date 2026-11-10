@@ -59,6 +59,7 @@ interface SessionRow {
   stopped_at: Date | null;
   energy_wh: string | null;
   limit_w: number | null;
+  signed_meter_data: SessionDto['signedMeterData'];
 }
 const sessionDto = (r: SessionRow): SessionDto => ({
   sessionId: r.session_id,
@@ -71,10 +72,11 @@ const sessionDto = (r: SessionRow): SessionDto => ({
   stoppedAt: r.stopped_at?.toISOString() ?? null,
   energyWh: r.energy_wh === null ? null : Number(r.energy_wh),
   limitW: r.limit_w,
+  ...(r.signed_meter_data ? { signedMeterData: r.signed_meter_data } : {}),
 });
 
 const SESSION_COLUMNS = `s.session_id, s.transaction_id, s.driver_id, s.station_id, s.connector_id, s.status, s.started_at, s.stopped_at, s.energy_wh,
-  coalesce(a.limit_w, s.final_limit_w) AS limit_w`;
+  coalesce(a.limit_w, s.final_limit_w) AS limit_w, s.signed_meter_data`;
 /** session_id is a UUIDv7 minted at insert; started_at is within 7 days of it (clamped), so this prunes partitions. */
 const SESSION_BY_ID = `s.session_id = $1 AND s.started_at BETWEEN uuid_extract_timestamp($1::uuid) - interval '8 days' AND uuid_extract_timestamp($1::uuid) + interval '8 days'`;
 
