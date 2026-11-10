@@ -49,6 +49,18 @@ groups:
           summary: "Gateway 99.95% SLO: error budget burning at 6x (6h and 30m windows)"
           description: "gateway CALLERROR ratio exceeds 6 x the 0.0005 error budget on both the 6h and 30m windows (Google SRE workbook multiwindow multi-burn-rate)."
           runbook: "docs/runbook.md#signals-worth-alerting-on"
+  - name: availability
+    rules:
+      - alert: ServiceDown
+        expr: |
+          up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} is down"
+          description: "Prometheus could not scrape {{ $labels.instance }} for 1 minute."
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
   - name: slo-invariants
     rules:
       - alert: SiteCapExceeded
@@ -59,7 +71,7 @@ groups:
           severity: critical
         annotations:
           summary: "A site drew more than its cap (ADR 0000: the cap is never exceeded)"
-          description: "max over sites of sim_site_drawn_watts / sim_site_cap_watts is above 1. Any occurrence is a failure."
+          description: "max over sites of gateway_site_drawn_watts / gateway_site_cap_watts (station meter values) is above 1. Any occurrence is a failure."
           runbook: "docs/runbook.md#signals-worth-alerting-on"
       - alert: AllocationCapViolationRejected
         expr: |
@@ -70,6 +82,19 @@ groups:
         annotations:
           summary: "An allocation that would break the site cap was rejected by the invariant guard"
           description: "An allocation that would break the site cap was rejected by the invariant guard"
+          runbook: "docs/runbook.md#signals-worth-alerting-on"
+      - alert: StationIgnoresChargingProfile
+        expr: |
+          # A labelled counter has no series until its first increment, so increase() alone misses the first incident:
+          # a series that is > 0 now and did not exist 10 minutes ago counts too.
+          (sessions_profile_noncompliant_total > 0 unless sessions_profile_noncompliant_total offset 10m)
+          or increase(sessions_profile_noncompliant_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A station at {{ $labels.site_id }} keeps rejecting charging profiles"
+          description: "A station rejected SetChargingProfile repeatedly, so the site cap may not hold for its connector. See PROFILE_FAILURES_TO_STOP."
           runbook: "docs/runbook.md#signals-worth-alerting-on"
       - alert: InvariantViolation
         expr: |
