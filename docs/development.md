@@ -49,3 +49,10 @@ node --test scripts/charts/     # generator tests; also run by make check
 ```
 
 This rewrites `docs/img/*.svg`, `docs/metrics.md`, `docs/drills.md` and the generated blocks in the README and the pages under `docs/` (stats, targets at a glance, charts, drills table, findings table) from the raw files only. See [`scripts/charts/README.md`](../scripts/charts/README.md).
+
+## Commit messages
+
+Commit subjects and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+(`feat(billing): add credit notes`); the types, scopes and rules are in [`CLAUDE.md`](../CLAUDE.md). The `commits`
+workflow checks the PR title and every commit of a PR; run the same check locally with
+`node scripts/check-commits.mjs origin/main HEAD`.
