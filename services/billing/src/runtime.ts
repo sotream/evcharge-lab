@@ -15,12 +15,15 @@ import {
 import type { BillingDeps } from './api/billing.controller';
 import type { BillingConfig } from './config';
 import { errorMessage } from './util';
+import { CreditNotes } from './invoices/credit-notes';
 import { InvoiceReader } from './invoices/invoice-reader';
 import { metrics } from './metrics';
 import type { PaymentProvider } from './psp/payment-provider';
 import { MockPsp } from './psp/mock-psp';
 import { SagaEngine } from './sagas/saga-engine';
 import { SagaWorker } from './sagas/saga-worker';
+import { scrubDeletedDrivers } from './gdpr';
+import { tokenKey } from './token-crypto';
 import { TariffClient, type TariffQuoter } from './tariff/tariff-client';
 
 export interface BillingRuntime {
@@ -101,6 +104,7 @@ export function createBillingRuntime(config: BillingConfig, pool: Pool, log: Log
     },
   });
 
+  let scrubTimer: NodeJS.Timeout | undefined;
   return {
     engine,
     worker,
@@ -108,16 +112,19 @@ export function createBillingRuntime(config: BillingConfig, pool: Pool, log: Log
     relay,
     producer,
     psp,
-    deps: { pool, invoices: new InvoiceReader(pool) },
+    deps: { pool, invoices: new InvoiceReader(pool), engine, tokenKey: tokenKey(config.TOKEN_ENC_KEY), creditNotes: new CreditNotes(pool, psp, config, log) },
     async start() {
       const created = await ensureInvoicePartitions(pool);
       if (created > 0) log.info({ created }, 'created invoice partitions');
       await engine.refreshPendingGauge().catch((err) => log.warn({ err: errorMessage(err) }, 'initial gauge refresh failed'));
+      scrubTimer = setInterval(() => void scrubDeletedDrivers(pool).catch((err) => log.warn({ err: errorMessage(err) }, 'scrub of deleted drivers failed')), 60_000);
+      scrubTimer.unref();
       worker.start();
       await relay.start();
       await consumer.start();
     },
     async stop() {
+      clearInterval(scrubTimer);
       await consumer.stop();
       await worker.stop();
       await relay.stop();

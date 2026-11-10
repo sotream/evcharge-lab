@@ -1,10 +1,14 @@
 /* oxlint-disable no-await-in-loop */ // sequential awaits are intentional here (worker loops, ordering)
+import { randomBytes } from 'node:crypto';
 import { events } from '@evcharge/contracts';
 import { createConsumer, createPgPool, createProducer, loadConfig, makeEnvelope, type KafkaConsumer, type KafkaProducer, type Pool } from '@evcharge/platform';
 import type { PaymentProvider } from '../../src/psp/payment-provider';
 import { billingConfigSchema, type BillingConfig } from '../../src/config';
 import { createBillingRuntime, type BillingRuntime } from '../../src/runtime';
 import { createTopics, INTERNAL_TOKEN, KAFKA_BROKERS, silentLogger, tempBillingDb, uniq } from './infra';
+
+/** Per test process, never a literal in the source. */
+const TEST_TOKEN_ENC_KEY = randomBytes(32).toString('base64');
 
 export interface Harness {
   db: Awaited<ReturnType<typeof tempBillingDb>>;
@@ -51,6 +55,7 @@ export async function createHarness(tariffUrl: string, partitions = 6): Promise<
       const config = loadConfig(billingConfigSchema, {
         SERVICE_NAME: 'billing',
         LOG_LEVEL: 'silent',
+        TOKEN_ENC_KEY: TEST_TOKEN_ENC_KEY,
         HTTP_PORT: '0',
         INTERNAL_TOKEN,
         DATABASE_URL: db.url,

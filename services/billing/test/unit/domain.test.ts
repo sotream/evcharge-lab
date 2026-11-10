@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { captureAmount, invoiceStatus, isPermanentHttpStatus, PENDING_STATES, retryDelayMs, SAGA_STATES } from '../../src/domain';
+import { captureAmount, captureRetryKey, DUNNABLE_DECLINE_REASONS, formatInvoiceNumber, nextCaptureRetryAt, parseRetryDelaysH, invoiceStatus, invoiceYear, isPermanentHttpStatus, PENDING_STATES, retryDelayMs, SAGA_STATES, splitVat } from '../../src/domain';
 
 const hi = (a: number) => retryDelayMs(a, 1000, 30_000, () => 1 - Number.EPSILON);
 const lo = (a: number) => retryDelayMs(a, 1000, 30_000, () => 0);
@@ -56,5 +56,64 @@ describe('states', () => {
   it('pending states are a subset of the machine', () => {
     for (const s of PENDING_STATES) expect(SAGA_STATES).toContain(s);
     expect(SAGA_STATES).toHaveLength(8);
+  });
+});
+
+describe('splitVat (tariff prices are gross, PAngV)', () => {
+  it('splits a gross amount at 19%', () => {
+    expect(splitVat(1190, 1900)).toEqual({ netMinor: 1000, vatMinor: 190 });
+    expect(splitVat(1, 1900)).toEqual({ netMinor: 1, vatMinor: 0 });
+    expect(splitVat(0, 1900)).toEqual({ netMinor: 0, vatMinor: 0 });
+    expect(splitVat(1000, 0)).toEqual({ netMinor: 1000, vatMinor: 0 });
+  });
+  it('rounds the VAT half up and net + vat is always the gross', () => {
+    expect(splitVat(3, 1900)).toEqual({ netMinor: 3, vatMinor: 0 }); // 0.479
+    expect(splitVat(6, 1900)).toEqual({ netMinor: 5, vatMinor: 1 }); // 0.958
+    for (let g = 0; g < 5000; g += 7) {
+      const { netMinor, vatMinor } = splitVat(g, 1900);
+      expect(netMinor + vatMinor).toBe(g);
+    }
+  });
+  it('rejects negative amounts and rates', () => {
+    expect(() => splitVat(-1, 1900)).toThrow('gross must be a non-negative integer');
+    expect(() => splitVat(100, -1)).toThrow('VAT rate must be a non-negative integer');
+  });
+});
+
+describe('invoice numbering', () => {
+  it('formats with a six-digit sequence', () => {
+    expect(formatInvoiceNumber('EVC', 2026, 42)).toBe('EVC-2026-000042');
+    expect(formatInvoiceNumber('EVC-CN', 2026, 1_234_567)).toBe('EVC-CN-2026-1234567');
+  });
+  it('takes the year in Europe/Berlin', () => {
+    expect(invoiceYear(new Date('2026-12-31T22:59:59Z'))).toBe(2026);
+    expect(invoiceYear(new Date('2026-12-31T23:00:00Z'))).toBe(2027); // 00:00 CET
+  });
+});
+
+describe('capture retries (dunning)', () => {
+  const first = new Date('2026-11-10T00:00:00Z');
+  it('schedules retries at 24 h and 72 h after the first decline, then gives up', () => {
+    expect(nextCaptureRetryAt(0, first, [24, 72])?.toISOString()).toBe('2026-11-11T00:00:00.000Z');
+    expect(nextCaptureRetryAt(1, first, [24, 72])?.toISOString()).toBe('2026-11-13T00:00:00.000Z');
+    expect(nextCaptureRetryAt(2, first, [24, 72])).toBeNull();
+    expect(nextCaptureRetryAt(0, first, [])).toBeNull();
+  });
+  it('keeps the round-0 key unchanged and suffixes later rounds', () => {
+    expect(captureRetryKey('capture:inv', 0)).toBe('capture:inv');
+    expect(captureRetryKey('capture:inv:rest', 2)).toBe('capture:inv:rest:r2');
+  });
+  it('dunns card declines only', () => {
+    expect(DUNNABLE_DECLINE_REASONS.has('insufficient_funds')).toBe(true);
+    expect(DUNNABLE_DECLINE_REASONS.has('amount_exceeds_authorization')).toBe(false);
+    expect(DUNNABLE_DECLINE_REASONS.has('authorization_released')).toBe(false);
+  });
+  it('parses fractional hours and rejects bad lists', () => {
+    expect(parseRetryDelaysH('24,72')).toEqual([24, 72]);
+    expect(parseRetryDelaysH(' 0.0003 , 0.0006 ')).toEqual([0.0003, 0.0006]);
+    expect(parseRetryDelaysH('')).toEqual([]);
+    expect(parseRetryDelaysH('none')).toEqual([]);
+    expect(() => parseRetryDelaysH('24,abc')).toThrow('CAPTURE_RETRY_DELAYS_H');
+    expect(() => parseRetryDelaysH('72,24')).toThrow('CAPTURE_RETRY_DELAYS_H');
   });
 });

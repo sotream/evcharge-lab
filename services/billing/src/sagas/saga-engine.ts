@@ -4,10 +4,12 @@ import { api, events, Topics } from '@evcharge/contracts';
 import { errorMessage } from '../util';
 import { enqueueOutbox, HttpError, makeEnvelope, type Logger, type Pool, type PoolClient, type Queryable, withTx } from '@evcharge/platform';
 import type { BillingConfig } from '../config';
-import { AUTH_MAX_ATTEMPTS, captureAmount, isPermanentHttpStatus, PENDING_STATES, retryDelayMs, type SagaState } from '../domain';
+import { AUTH_MAX_ATTEMPTS, captureAmount, captureRetryKey, DUNNABLE_DECLINE_REASONS, formatInvoiceNumber, nextCaptureRetryAt, invoiceYear, isPermanentHttpStatus, PENDING_STATES, retryDelayMs, type SagaState, splitVat } from '../domain';
 import { metrics } from '../metrics';
 import { type PaymentProvider, PspDeclinedError, PspIdempotencyMismatchError, PspTimeoutError } from '../psp/payment-provider';
 import type { TariffQuoter } from '../tariff/tariff-client';
+import { fetchEnergyProfile } from '../tariff/energy-profile';
+import { decryptToken, encryptToken, tokenKey } from '../token-crypto';
 
 export interface SagaRow {
   session_id: string;
@@ -40,16 +42,49 @@ export interface SagaRow {
   hold_captured: boolean;
   rest_captured: boolean;
   capture_reference: string | null;
+  energy_flag: string | null;
+  capture_round: number;
+  capture_first_declined_at: Date | null;
+  capture_token_round: number;
 }
 
 type EngineConfig = Pick<
   BillingConfig,
-  'HOLD_AMOUNT' | 'HOLD_CURRENCY' | 'BILLING_EVENTS_TOPIC' | 'SAGA_BACKOFF_BASE_MS' | 'SAGA_BACKOFF_MAX_MS' | 'SAGA_PRICING_DEADLINE_MS' | 'SAGA_LEASE_MS' | 'PSP_CALL_TIMEOUT_MS'
+  | 'HOLD_AMOUNT'
+  | 'HOLD_CURRENCY'
+  | 'BILLING_EVENTS_TOPIC'
+  | 'SAGA_BACKOFF_BASE_MS'
+  | 'SAGA_BACKOFF_MAX_MS'
+  | 'SAGA_PRICING_DEADLINE_MS'
+  | 'SAGA_LEASE_MS'
+  | 'PSP_CALL_TIMEOUT_MS'
+  | 'VAT_RATE_BP'
+  | 'INVOICE_PREFIX'
+  | 'CAPTURE_RETRY_DELAYS_H'
+  | 'TOKEN_ENC_KEY'
+  | 'TELEMETRY_URL'
+  | 'INTERNAL_TOKEN'
 >;
 
 const PRODUCER = 'billing';
 
 type CaptureOutcome = { kind: 'ok'; pspReference: string } | { kind: 'declined'; reason: string } | { kind: 'unknown'; err: unknown } | { kind: 'mismatch'; err: unknown };
+
+/**
+ * Takes the next gapless number of a document kind for the year of issuedAt (Europe/Berlin). Must run inside the
+ * transaction that writes the document: the counter row stays locked until it commits, and a rollback returns the number.
+ */
+export async function nextDocumentNumber(c: Queryable, kind: 'invoice' | 'credit_note', prefix: string, issuedAt: Date): Promise<string> {
+  const year = invoiceYear(issuedAt);
+  const { rows } = await c.query<{ last_seq: string }>(
+    `INSERT INTO invoice_counters (kind, year, last_seq) VALUES ($1, $2, 1)
+     ON CONFLICT (kind, year) DO UPDATE SET last_seq = invoice_counters.last_seq + 1
+     RETURNING last_seq`,
+    [kind, year],
+  );
+  const seq = Number(rows[0]?.last_seq);
+  return formatInvoiceNumber(kind === 'invoice' ? prefix : `${prefix}-CN`, year, seq);
+}
 
 /** Thrown inside a transition transaction when the saga no longer is in the state the step started from. */
 class StateChanged extends Error {}
@@ -84,8 +119,8 @@ export class SagaEngine {
   async onSessionCompleted(c: Queryable, d: events.SessionCompleted['data']): Promise<void> {
     await c.query(
       `INSERT INTO billing_sagas (session_id, state, driver_id, tariff_id, site_id, station_id, connector_id, transaction_id, started_at,
-                                  completed_at, stopped_at, energy_wh, hold_minor, currency, next_attempt_at, deadline_at)
-       VALUES ($1, 'PRICING', $2, $3, $4, $5, $6, $7, $8, now(), $9, $10, 0, $11, now(), now() + $12 * interval '1 millisecond')
+                                  completed_at, stopped_at, energy_wh, hold_minor, currency, next_attempt_at, deadline_at, energy_flag)
+       VALUES ($1, 'PRICING', $2, $3, $4, $5, $6, $7, $8, now(), $9, $10, 0, $11, now(), now() + $12 * interval '1 millisecond', $13)
        ON CONFLICT (session_id) DO UPDATE SET
          completed_at = now(),
          stopped_at = EXCLUDED.stopped_at,
@@ -93,12 +128,13 @@ export class SagaEngine {
          tariff_id = EXCLUDED.tariff_id,
          driver_id = COALESCE(billing_sagas.driver_id, EXCLUDED.driver_id),
          deadline_at = EXCLUDED.deadline_at,
+         energy_flag = EXCLUDED.energy_flag,
          state = CASE WHEN billing_sagas.state IN ('AUTHORIZED', 'AUTH_FAILED') THEN 'PRICING' ELSE billing_sagas.state END,
          attempts = CASE WHEN billing_sagas.state IN ('AUTHORIZED', 'AUTH_FAILED') THEN 0 ELSE billing_sagas.attempts END,
          next_attempt_at = CASE WHEN billing_sagas.state IN ('AUTHORIZED', 'AUTH_FAILED') THEN now() ELSE billing_sagas.next_attempt_at END,
          updated_at = now()
        WHERE billing_sagas.completed_at IS NULL`,
-      [d.sessionId, d.driverId, d.tariffId, d.siteId, d.stationId, d.connectorId, d.transactionId, d.startedAt, d.stoppedAt, d.energyWh, this.cfg.HOLD_CURRENCY, this.cfg.SAGA_PRICING_DEADLINE_MS],
+      [d.sessionId, d.driverId, d.tariffId, d.siteId, d.stationId, d.connectorId, d.transactionId, d.startedAt, d.stoppedAt, d.energyWh, this.cfg.HOLD_CURRENCY, this.cfg.SAGA_PRICING_DEADLINE_MS, d.energyFlag ?? null],
     );
   }
 
@@ -168,9 +204,9 @@ export class SagaEngine {
     if (row.auth_void_pending) return this.stepVoidAuthorization(row);
     const driverId = row.driver_id;
     // The token of the first attempt is replayed: the same idempotency key must carry the same request.
-    const token = row.auth_token ?? (driverId ? await this.paymentToken(driverId) : undefined);
+    const token = (row.auth_token === null ? null : decryptToken(row.auth_token, tokenKey(this.cfg.TOKEN_ENC_KEY))) ?? (driverId ? await this.paymentToken(driverId) : undefined);
     if (!driverId || !token) return this.authFailed(row, 'no_payment_method');
-    if (row.auth_token === null) await this.pool.query("UPDATE billing_sagas SET auth_token = $2 WHERE session_id = $1 AND state = 'AUTHORIZING'", [row.session_id, token]);
+    if (row.auth_token === null) await this.pool.query("UPDATE billing_sagas SET auth_token = $2 WHERE session_id = $1 AND state = 'AUTHORIZING'", [row.session_id, encryptToken(token, tokenKey(this.cfg.TOKEN_ENC_KEY))]);
     try {
       const { authorizationId } = await this.callPsp('authorize', () =>
         this.psp.authorize({ idempotencyKey: `auth:${row.session_id}`, token, amountMinor: row.hold_minor, currency: row.currency }),
@@ -246,9 +282,11 @@ export class SagaEngine {
 
   private async stepPrice(row: SagaRow): Promise<void> {
     if (!row.stopped_at || row.energy_wh === null) throw new Error('PRICING saga without completion data');
+    if (row.energy_flag && row.energy_flag !== 'ok') return this.holdForReview(row, `energy_review:${row.energy_flag}`);
     let quote: api.QuoteRes;
+    const energyProfile = this.cfg.TELEMETRY_URL ? await fetchEnergyProfile(this.cfg.TELEMETRY_URL, this.cfg.INTERNAL_TOKEN, row.station_id, row.connector_id, row.started_at, row.stopped_at) : undefined;
     try {
-      quote = await this.tariff.quote(row.session_id, { tariffId: row.tariff_id, startedAt: row.started_at.toISOString(), stoppedAt: row.stopped_at.toISOString(), energyWh: Number(row.energy_wh) });
+      quote = await this.tariff.quote(row.session_id, { tariffId: row.tariff_id, startedAt: row.started_at.toISOString(), stoppedAt: row.stopped_at.toISOString(), energyWh: Number(row.energy_wh), ...(energyProfile ? { energyProfile } : {}) });
     } catch (err) {
       metrics.sagaSteps.inc({ step: 'PRICING', outcome: 'tariff_unavailable' });
       if (err instanceof HttpError && isPermanentHttpStatus(err.status)) return this.park(row, 'pricing', `tariff rejected the quote: ${errorMessage(err)}`, true);
@@ -274,10 +312,34 @@ export class SagaEngine {
         await this.markInvoiced(c, row, inv.invoice_id, inv.total_minor, hasDriver);
         return;
       }
+      // Numbered only once this transaction owns the registry row: the adopt branch above must not take a number, and a
+      // rollback anywhere below also undoes the counter, so numbers stay gapless.
+      const invoiceNumber = await nextDocumentNumber(c, 'invoice', this.cfg.INVOICE_PREFIX, issuedAt);
+      await c.query('UPDATE invoice_registry SET invoice_number = $2 WHERE session_id = $1', [row.session_id, invoiceNumber]);
+      const vatRateBp = this.cfg.VAT_RATE_BP;
+      const { netMinor, vatMinor } = splitVat(quote.totalMinor, vatRateBp);
       await c.query(
-        `INSERT INTO invoices (invoice_id, session_id, driver_id, tariff_id, currency, total_minor, energy_wh, started_at, stopped_at, station_id, site_id, issued_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [invoiceId, row.session_id, row.driver_id, quote.tariffId, quote.currency, quote.totalMinor, row.energy_wh, row.started_at, row.stopped_at, row.station_id, row.site_id, issuedAt],
+        `INSERT INTO invoices (invoice_id, session_id, driver_id, tariff_id, currency, total_minor, energy_wh, started_at, stopped_at, station_id, site_id, issued_at,
+                               invoice_number, net_minor, vat_minor, vat_rate_bp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        [
+          invoiceId,
+          row.session_id,
+          row.driver_id,
+          quote.tariffId,
+          quote.currency,
+          quote.totalMinor,
+          row.energy_wh,
+          row.started_at,
+          row.stopped_at,
+          row.station_id,
+          row.site_id,
+          issuedAt,
+          invoiceNumber,
+          netMinor,
+          vatMinor,
+          vatRateBp,
+        ],
       );
       for (const [i, l] of quote.lines.entries()) {
         await c.query('INSERT INTO invoice_lines (invoice_id, issued_at, line_no, kind, description, quantity, unit, amount_minor) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [
@@ -294,9 +356,13 @@ export class SagaEngine {
       await this.markInvoiced(c, row, invoiceId, quote.totalMinor, hasDriver, quote.currency);
       await this.emit(c, row.session_id, 'billing.invoice-issued', {
         invoiceId,
+        invoiceNumber,
         sessionId: row.session_id,
         driverId: row.driver_id,
         total: { amountMinor: quote.totalMinor, currency: quote.currency },
+        net: { amountMinor: netMinor, currency: quote.currency },
+        vat: { amountMinor: vatMinor, currency: quote.currency },
+        vatRateBp,
         lines: quote.lines.map((l) => ({ kind: l.kind, description: l.description, quantity: l.quantity, unit: l.unit, amountMinor: l.amountMinor })),
       });
     });
@@ -327,9 +393,10 @@ export class SagaEngine {
     const invoiceId = row.invoice_id;
     if (!invoiceId || row.total_minor === null) throw new Error('capture without invoice');
     if (row.state === 'INVOICED') await this.beginCapture(row, row.total_minor);
+    if (row.capture_round > row.capture_token_round) await this.refreshCaptureToken(row);
     const holdPart = row.capture_hold_minor ?? 0;
     const rest = row.capture_rest_minor ?? 0;
-    const token = row.capture_token ?? '';
+    const token = row.capture_token ? decryptToken(row.capture_token, tokenKey(this.cfg.TOKEN_ENC_KEY)) : '';
     const hasAuth = row.authorization_id !== null;
 
     if (holdPart + rest === 0) {
@@ -350,7 +417,7 @@ export class SagaEngine {
 
     if (!row.hold_captured) {
       if (!hasAuth && !token) return this.captureFailed(row, invoiceId, 'no_payment_method', 'capture');
-      const outcome = await this.captureStep('capture', { idempotencyKey: `capture:${invoiceId}`, authorizationId: row.authorization_id, token, amountMinor: holdPart, currency: row.currency });
+      const outcome = await this.captureStep('capture', { idempotencyKey: captureRetryKey(`capture:${invoiceId}`, row.capture_round), authorizationId: row.authorization_id, token, amountMinor: holdPart, currency: row.currency });
       if (outcome.kind !== 'ok') return this.afterFailedCapture(row, invoiceId, outcome, 'capture');
       await this.recordCapture(row, invoiceId, 'hold', holdPart, outcome.pspReference);
       row.hold_captured = true;
@@ -359,7 +426,7 @@ export class SagaEngine {
 
     if (rest > 0 && !row.rest_captured) {
       if (!token) return this.captureFailed(row, invoiceId, 'no_payment_method', 'capture_remainder');
-      const outcome = await this.captureStep('capture_remainder', { idempotencyKey: `capture:${invoiceId}:rest`, authorizationId: null, token, amountMinor: rest, currency: row.currency });
+      const outcome = await this.captureStep('capture_remainder', { idempotencyKey: captureRetryKey(`capture:${invoiceId}:rest`, row.capture_round), authorizationId: null, token, amountMinor: rest, currency: row.currency });
       if (outcome.kind !== 'ok') return this.afterFailedCapture(row, invoiceId, outcome, 'capture_remainder');
       await this.recordCapture(row, invoiceId, 'remainder', rest, outcome.pspReference);
     }
@@ -372,13 +439,14 @@ export class SagaEngine {
     const holdPart = captureAmount(total, row.hold_minor, hasAuth);
     const rest = hasAuth ? total - holdPart : 0;
     const token = row.driver_id ? ((await this.paymentToken(row.driver_id)) ?? '') : '';
+    const storedToken = encryptToken(token, tokenKey(this.cfg.TOKEN_ENC_KEY));
     const res = await this.pool.query(
       `UPDATE billing_sagas SET state = 'CAPTURING', capture_token = $2, capture_hold_minor = $3, capture_rest_minor = $4, updated_at = now()
         WHERE session_id = $1 AND state = 'INVOICED'`,
-      [row.session_id, token, holdPart, rest],
+      [row.session_id, storedToken, holdPart, rest],
     );
     if (res.rowCount === 0) throw new StateChanged();
-    Object.assign(row, { state: 'CAPTURING', capture_token: token, capture_hold_minor: holdPart, capture_rest_minor: rest });
+    Object.assign(row, { state: 'CAPTURING', capture_token: storedToken, capture_hold_minor: holdPart, capture_rest_minor: rest });
   }
 
   private async captureStep(step: 'capture' | 'capture_remainder', req: Parameters<PaymentProvider['capture']>[0]): Promise<CaptureOutcome> {
@@ -402,9 +470,51 @@ export class SagaEngine {
   }
 
   private async afterFailedCapture(row: SagaRow, invoiceId: string, outcome: Exclude<CaptureOutcome, { kind: 'ok' }>, step: 'capture' | 'capture_remainder'): Promise<void> {
-    if (outcome.kind === 'declined') return this.captureFailed(row, invoiceId, outcome.reason, step);
+    if (outcome.kind === 'declined') return this.declinedCapture(row, invoiceId, outcome.reason, step);
     if (outcome.kind === 'unknown') return this.retryLater(row, step, outcome.err);
     return this.parkIdempotencyMismatch(row, step, outcome.err);
+  }
+
+  /**
+   * Dunning (ADR 0007): a card decline (DUNNABLE_DECLINE_REASONS) schedules the next round of CAPTURE_RETRY_DELAYS_H,
+   * measured from the first decline, and stays CAPTURING, emitting PaymentFailed with step 'capture_retry' (not final); only when the schedule is exhausted does the saga fail for good
+   * (captureFailed: PaymentFailed, hold released). The next round re-reads the payment method, because asking the driver
+   * to replace the card is the point of waiting, and uses a new idempotency key per sub-capture (captureRetryKey).
+   * A sub-capture that already succeeded (hold_captured) is not repeated.
+   */
+  private async declinedCapture(row: SagaRow, invoiceId: string, reason: string, step: 'capture' | 'capture_remainder'): Promise<void> {
+    const firstDeclinedAt = row.capture_first_declined_at ?? new Date();
+    const dueAt = DUNNABLE_DECLINE_REASONS.has(reason) ? nextCaptureRetryAt(row.capture_round, firstDeclinedAt, this.cfg.CAPTURE_RETRY_DELAYS_H) : null;
+    if (!dueAt) return this.captureFailed(row, invoiceId, reason, step);
+    await withTx(this.pool, async (c) => {
+      const res = await c.query(
+        `UPDATE billing_sagas
+            SET capture_round = capture_round + 1, capture_first_declined_at = COALESCE(capture_first_declined_at, $2),
+                next_attempt_at = $3, attempts = 0, lease_until = NULL, last_error = $4, updated_at = now()
+          WHERE session_id = $1 AND state = 'CAPTURING' AND capture_round = $5`,
+        [row.session_id, firstDeclinedAt, dueAt, `${step} declined (${reason}); retry round ${row.capture_round + 1} at ${dueAt.toISOString()}`, row.capture_round],
+      );
+      if (res.rowCount === 0) throw new StateChanged();
+      // Not final: tells the driver to fix the card before the next round (sessions acts only on step 'authorize').
+      await this.emit(c, row.session_id, 'billing.payment-failed', { invoiceId, sessionId: row.session_id, step: 'capture_retry', reason: `${reason}; next attempt ${dueAt.toISOString()}` });
+    });
+    metrics.captures.inc({ outcome: 'retry_scheduled' });
+    this.log.warn({ sessionId: row.session_id, invoiceId, step, reason, round: row.capture_round + 1, dueAt }, 'capture declined; retry scheduled');
+  }
+
+  /** First run of a retry round: take the driver's current payment method (kept when there is none). */
+  private async refreshCaptureToken(row: SagaRow): Promise<void> {
+    const token = row.driver_id ? await this.paymentToken(row.driver_id) : undefined;
+    const stored = token ? encryptToken(token, tokenKey(this.cfg.TOKEN_ENC_KEY)) : null;
+    const { rows } = await this.pool.query<{ capture_token: string | null }>(
+      `UPDATE billing_sagas SET capture_token = COALESCE($2, capture_token), capture_token_round = $3, updated_at = now()
+        WHERE session_id = $1 AND state = 'CAPTURING' AND capture_token_round < $3
+        RETURNING capture_token`,
+      [row.session_id, stored, row.capture_round],
+    );
+    if (!rows[0]) throw new StateChanged();
+    row.capture_token = rows[0].capture_token;
+    row.capture_token_round = row.capture_round;
   }
 
   /** Marks one sub-capture done and records its payment row, in one transaction. */
@@ -483,7 +593,8 @@ export class SagaEngine {
 
   private async paymentToken(driverId: string): Promise<string | undefined> {
     const { rows } = await this.pool.query<{ token: string }>('SELECT token FROM payment_methods WHERE driver_id = $1', [driverId]);
-    return rows[0]?.token;
+    const stored = rows[0]?.token;
+    return stored === undefined ? undefined : decryptToken(stored, tokenKey(this.cfg.TOKEN_ENC_KEY));
   }
 
   /** One PSP call with a client-side timeout; a timeout is an unknown outcome (PspTimeoutError). */
@@ -525,6 +636,38 @@ export class SagaEngine {
     metrics.pspIdempotencyMismatch.inc({ step });
     this.log.error({ sessionId: row.session_id, step, err: errorMessage(err) }, 'PSP idempotency key mismatch; saga parked for manual review');
     await this.park(row, 'psp_idempotency_mismatch', `PSP idempotency mismatch in ${step}: ${errorMessage(err)}`, false);
+  }
+
+  /**
+   * Operator action for a parked saga (next_attempt_at NULL in PRICING, INVOICED or CAPTURING): schedule it again.
+   * `acceptEnergy` first marks a flagged reading as confirmed (energy_flag = 'ok'). Without it a saga held for an
+   * energy review is simply held again.
+   */
+  async resume(sessionId: string, acceptEnergy = false): Promise<'resumed' | 'not_parked' | 'not_found'> {
+    const res = await this.pool.query(
+      `UPDATE billing_sagas SET next_attempt_at = now(), attempts = 0, last_error = NULL, lease_until = NULL, updated_at = now(),
+              energy_flag = CASE WHEN $2 THEN 'ok' ELSE energy_flag END
+        WHERE session_id = $1 AND next_attempt_at IS NULL AND state IN ('PRICING', 'INVOICED', 'CAPTURING')`,
+      [sessionId, acceptEnergy],
+    );
+    if (res.rowCount) return 'resumed';
+    const exists = await this.pool.query('SELECT 1 FROM billing_sagas WHERE session_id = $1', [sessionId]);
+    return exists.rowCount ? 'not_parked' : 'not_found';
+  }
+
+  /**
+   * Sessions flagged the metered energy as untrustworthy (implausible, meter_regressed, stale): no invoice and no capture
+   * until an operator resumes the saga. Unlike park() the saga stays in PRICING and keeps its authorization (park would
+   * hand it to the release path, which a resume could not undo); the PSP expires the hold if nobody acts.
+   */
+  private async holdForReview(row: SagaRow, reason: string): Promise<void> {
+    this.log.error({ sessionId: row.session_id, reason }, 'saga held for energy review');
+    metrics.sagasParked.inc({ step: 'energy_review' });
+    await withTx(this.pool, async (c) => {
+      const res = await c.query("UPDATE billing_sagas SET next_attempt_at = NULL, lease_until = NULL, last_error = $2, failure_reason = $2, updated_at = now() WHERE session_id = $1 AND state = 'PRICING'", [row.session_id, reason]);
+      if (res.rowCount === 0) throw new StateChanged();
+      await this.emit(c, row.session_id, 'billing.payment-failed', { invoiceId: null, sessionId: row.session_id, step: 'pricing', reason });
+    });
   }
 
   /** Stops automatic retries (visible as billing_sagas_parked_total and last_error). */

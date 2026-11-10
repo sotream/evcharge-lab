@@ -8,6 +8,7 @@ const base = {
   DATABASE_URL: 'postgres://x@localhost/billing',
   KAFKA_BROKERS: 'a:9092,b:9092',
   TARIFF_URL: 'http://tariff:8080',
+  TOKEN_ENC_KEY: Buffer.alloc(32, 7).toString('base64'),
 };
 
 describe('billing config', () => {
@@ -43,5 +44,12 @@ describe('billing config', () => {
     expect(thrown).toBeInstanceOf(ConfigError);
     const issues = (thrown as ConfigError).issues.join('\n');
     for (const v of ['INTERNAL_TOKEN', 'DATABASE_URL', 'KAFKA_BROKERS', 'TARIFF_URL', 'PSP_TIMEOUT_RATE']) expect(issues).toContain(v);
+  });
+
+  it('requires a 32-byte TOKEN_ENC_KEY, with no built-in default', () => {
+    const { TOKEN_ENC_KEY: _key, ...noKey } = base;
+    expect(() => loadConfig(billingConfigSchema, noKey)).toThrow(ConfigError);
+    expect(() => loadConfig(billingConfigSchema, { ...base, TOKEN_ENC_KEY: Buffer.alloc(16, 7).toString('base64') })).toThrow(ConfigError);
+    expect(loadConfig(billingConfigSchema, base).TOKEN_ENC_KEY).toBe(base.TOKEN_ENC_KEY);
   });
 });
