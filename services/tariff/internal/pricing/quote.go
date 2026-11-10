@@ -16,6 +16,8 @@ const (
 	MaxEnergyWh = 10_000_000 // 10 MWh
 	MaxDuration = 31 * 24 * time.Hour
 	maxPrice    = 10_000_000
+	// MaxProfileSamples bounds EnergyProfile: one sample per minute for a day and a bit.
+	MaxProfileSamples = 2000
 )
 
 // ErrInvalidRequest reports a request that cannot be priced.
@@ -26,6 +28,8 @@ type Request struct {
 	StartedAt time.Time
 	StoppedAt time.Time
 	EnergyWh  int64
+	// EnergyProfile is optional; see EnergyPerBand.
+	EnergyProfile []contracts.EnergySample
 }
 
 // Validate checks the request bounds.
@@ -39,6 +43,17 @@ func (r Request) Validate() error {
 		return fmt.Errorf("%w: session longer than %s", ErrInvalidRequest, MaxDuration)
 	case r.EnergyWh < 0 || r.EnergyWh > MaxEnergyWh:
 		return fmt.Errorf("%w: energyWh must be in 0..%d", ErrInvalidRequest, MaxEnergyWh)
+	case len(r.EnergyProfile) > MaxProfileSamples:
+		return fmt.Errorf("%w: energyProfile has more than %d samples", ErrInvalidRequest, MaxProfileSamples)
+	}
+	// Bounded samples keep every product in EnergyPerBand/register inside int64 (see register).
+	for i, s := range r.EnergyProfile {
+		switch {
+		case s.EnergyWh < 0 || s.EnergyWh > MaxEnergyWh:
+			return fmt.Errorf("%w: energyProfile[%d].energyWh must be in 0..%d", ErrInvalidRequest, i, MaxEnergyWh)
+		case s.At.Before(r.StartedAt.Add(-MaxDuration)) || s.At.After(r.StoppedAt.Add(MaxDuration)):
+			return fmt.Errorf("%w: energyProfile[%d].at is more than %s outside the session", ErrInvalidRequest, i, MaxDuration)
+		}
 	}
 	return nil
 }
@@ -77,11 +92,14 @@ func Quote(v *Version, req Request) (contracts.QuoteRes, error) {
 		billable, minApplied = v.MinBillableWh, true
 	}
 	bands := v.Split(req.StartedAt, req.StoppedAt)
-	weights := make([]int64, len(bands))
-	for i, b := range bands {
-		weights[i] = b.Ms
+	parts, metered := v.EnergyPerBand(req.StartedAt, req.StoppedAt, req.EnergyProfile, billable)
+	if !metered {
+		weights := make([]int64, len(bands))
+		for i, b := range bands {
+			weights[i] = b.Ms
+		}
+		parts = LargestRemainder(billable, weights)
 	}
-	parts := LargestRemainder(billable, weights)
 	for i, b := range bands {
 		price, name := v.EnergyPriceMinorPerKWh, "base"
 		if b.Window >= 0 {
@@ -89,6 +107,9 @@ func Quote(v *Version, req Request) (contracts.QuoteRes, error) {
 			price, name = w.PriceMinorPerKWh, w.describe()
 		}
 		desc := fmt.Sprintf("Energy %s: %d Wh x %s %s/kWh, rounded up per line", name, parts[i], money(price, v.Currency), v.Currency)
+		if metered {
+			desc += "; split between windows by metered energy"
+		}
 		if minApplied {
 			desc += fmt.Sprintf("; minimum billable %d Wh applied to %d Wh delivered", v.MinBillableWh, req.EnergyWh)
 		}
@@ -176,6 +197,71 @@ func (v *Version) Split(start, stop time.Time) []Band {
 	if len(v.Windows) == 0 {
 		return []Band{{Window: -1, Ms: stop.Sub(start).Milliseconds()}}
 	}
+	if !stop.After(start) {
+		return []Band{{Window: v.bandAt(v.instances(start, stop), start), Ms: 0}}
+	}
+	var bands []Band
+	idx := map[int]int{}
+	for _, s := range v.segments(start, stop) {
+		j, ok := idx[s.Window]
+		if !ok {
+			j = len(bands)
+			idx[s.Window] = j
+			bands = append(bands, Band{Window: s.Window})
+		}
+		bands[j].Ms += s.To.Sub(s.From).Milliseconds()
+	}
+	return bands
+}
+
+// Segment is one contiguous stretch of [start, stop) under a single price band.
+type Segment struct {
+	Window   int // as in Band
+	From, To time.Time
+}
+
+// segments returns the contiguous stretches of [start, stop) in chronological order. start and stop must already be
+// truncated to milliseconds, stop after start, and v must have windows.
+func (v *Version) segments(start, stop time.Time) []Segment {
+	inst := v.instances(start, stop)
+	cuts := []time.Time{start, stop}
+	for _, in := range inst {
+		if in.from.After(start) && in.from.Before(stop) {
+			cuts = append(cuts, in.from)
+		}
+		if in.to.After(start) && in.to.Before(stop) {
+			cuts = append(cuts, in.to)
+		}
+	}
+	sort.Slice(cuts, func(i, j int) bool { return cuts[i].Before(cuts[j]) })
+	var segs []Segment
+	for k := 0; k+1 < len(cuts); k++ {
+		if !cuts[k+1].After(cuts[k]) {
+			continue
+		}
+		w := v.bandAt(inst, cuts[k])
+		if n := len(segs); n > 0 && segs[n-1].Window == w {
+			segs[n-1].To = cuts[k+1]
+			continue
+		}
+		segs = append(segs, Segment{Window: w, From: cuts[k], To: cuts[k+1]})
+	}
+	return segs
+}
+
+// bandAt is the window in force at t (lowest index wins on overlap), or -1.
+func (v *Version) bandAt(inst []instance, t time.Time) int {
+	best := -1
+	for _, in := range inst {
+		if !t.Before(in.from) && t.Before(in.to) && (best == -1 || in.window < best) {
+			best = in.window
+		}
+	}
+	return best
+}
+
+// instances lists the window occurrences that can touch [start, stop].
+func (v *Version) instances(start, stop time.Time) []instance {
 	var inst []instance
 	ls := start.In(v.loc)
 	le := stop.In(v.loc)
@@ -198,44 +284,7 @@ func (v *Version) Split(start, stop time.Time) []Band {
 			}
 		}
 	}
-	bandAt := func(t time.Time) int {
-		best := -1
-		for _, in := range inst {
-			if !t.Before(in.from) && t.Before(in.to) && (best == -1 || in.window < best) {
-				best = in.window
-			}
-		}
-		return best
-	}
-	if !stop.After(start) {
-		return []Band{{Window: bandAt(start), Ms: 0}}
-	}
-	cuts := []time.Time{start, stop}
-	for _, in := range inst {
-		if in.from.After(start) && in.from.Before(stop) {
-			cuts = append(cuts, in.from)
-		}
-		if in.to.After(start) && in.to.Before(stop) {
-			cuts = append(cuts, in.to)
-		}
-	}
-	sort.Slice(cuts, func(i, j int) bool { return cuts[i].Before(cuts[j]) })
-	var bands []Band
-	idx := map[int]int{}
-	for k := 0; k+1 < len(cuts); k++ {
-		if !cuts[k+1].After(cuts[k]) {
-			continue
-		}
-		w := bandAt(cuts[k])
-		j, ok := idx[w]
-		if !ok {
-			j = len(bands)
-			idx[w] = j
-			bands = append(bands, Band{Window: w})
-		}
-		bands[j].Ms += cuts[k+1].Sub(cuts[k]).Milliseconds()
-	}
-	return bands
+	return inst
 }
 
 // LocalInstant resolves the wall-clock time y-m-d + minute (minute may be
