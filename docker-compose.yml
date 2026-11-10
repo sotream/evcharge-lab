@@ -242,7 +242,7 @@ services:
 
   # Alerts from Prometheus go here (infra/alertmanager/alertmanager.yml; the lab has no external receiver).
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
     ports: ["127.0.0.1:29094:9093"]
     volumes: ["./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
