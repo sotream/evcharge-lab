@@ -85,6 +85,8 @@ export const SampledValue = z.object({
   measurand: Measurand.optional(),
   unit: z.enum(['Wh', 'kWh', 'W', 'kW', 'A', 'V', 'Percent']).optional(),
   phase: z.string().optional(),
+  /** OCPP 1.6 SampledValue.format; 'SignedData' carries a signed meter reading (Eichrecht). */
+  format: z.enum(['Raw', 'SignedData']).optional(),
 });
 export const MeterValue = z.object({ timestamp: dateTime, sampledValue: z.array(SampledValue).min(1) });
 

@@ -136,6 +136,7 @@ export const SessionCompleted = envelope(
     startedAt: ts,
     stoppedAt: ts,
     stopReason: z.string(),
+    energyFlag: z.enum(['ok', 'meter_regressed', 'implausible', 'stale']).optional(),
   }),
 );
 export const PowerAllocated = envelope(
@@ -162,15 +163,35 @@ export const InvoiceIssued = envelope(
   'billing.invoice-issued',
   z.object({
     invoiceId: uuid,
+    invoiceNumber: z.string().optional(),
     sessionId: uuid,
     driverId: uuid.nullable(),
     total: money,
+    net: money.optional(),
+    vat: money.optional(),
+    vatRateBp: z.number().int().min(0).optional(),
     lines: z.array(z.object({ kind: z.string(), description: z.string(), quantity: z.number(), unit: z.string(), amountMinor: z.number().int() })),
   }),
 );
 export const PaymentCaptured = envelope('billing.payment-captured', z.object({ invoiceId: uuid, sessionId: uuid, captured: money, pspReference: z.string() }));
 export const PaymentFailed = envelope('billing.payment-failed', z.object({ invoiceId: uuid.nullable(), sessionId: uuid, step: z.string(), reason: z.string() }));
-export const BillingEvent = z.discriminatedUnion('type', [PaymentAuthorized, InvoiceIssued, PaymentCaptured, PaymentFailed]);
+export const CreditNoteIssued = envelope(
+  'billing.credit-note-issued',
+  z.object({
+    creditNoteId: uuid,
+    creditNumber: z.string(),
+    invoiceId: uuid,
+    invoiceNumber: z.string().optional(),
+    sessionId: uuid,
+    driverId: uuid.nullable(),
+    amount: money,
+    net: money,
+    vat: money,
+    vatRateBp: z.number().int().min(0),
+    reason: z.string(),
+  }),
+);
+export const BillingEvent = z.discriminatedUnion('type', [PaymentAuthorized, InvoiceIssued, PaymentCaptured, PaymentFailed, CreditNoteIssued]);
 export type BillingEvent = z.infer<typeof BillingEvent>;
 
 // ---------------- ocpp.raw-log.v1 (producer: station-gateway, key: stationId)
@@ -205,5 +226,6 @@ export const ALL_EVENTS = {
   InvoiceIssued,
   PaymentCaptured,
   PaymentFailed,
+  CreditNoteIssued,
   OcppRawLogRecord,
 } as const;
