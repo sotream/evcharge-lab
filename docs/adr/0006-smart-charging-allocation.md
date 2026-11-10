@@ -174,3 +174,19 @@ There are two fallback layers, and each covers a different failure:
 - Correctness depends on stations honouring stack levels and `validTo`. The simulator does, and
   the "smart-charging down" drill checks that the measured site sum stays at or below the cap
   before, during and after.
+
+## Amendment (2026-11-10): measured site draw and profile rejection
+
+**Site draw is measured, not simulated.** Each gateway keeps, per site, the sum of the latest live `Power.Active.Import` of
+its connected stations (replayed readings ignored, a connection's values dropped when it closes) and exports it as
+`gateway_site_drawn_watts{gateway,site_id}`; the cap comes from the station credential (`capW`, new optional field of
+`stationCredential`) as `gateway_site_cap_watts`. `slo:site_cap_utilisation:max` is now
+`max(sum by (site_id) (gateway_site_drawn_watts) / max by (site_id) (gateway_site_cap_watts))`; the simulator ratio stays as
+`slo:site_cap_utilisation_sim:max` for the drills. There is no grid-connection meter integration: the figure is what the
+stations report, so a station that under-reports hides an overdraw.
+
+**A station that keeps rejecting profiles.** `active_sessions.profile_failures` (migration `sessions/0007_profile_failures.sql`)
+counts consecutive `Rejected` results of SetChargingProfile (`StationOffline` and `Timeout` do not count, ADR 0000
+degradation); `Accepted` resets it. At `PROFILE_FAILURES_TO_ALERT` (default 3) the counter
+`sessions_profile_noncompliant_total{site_id}` goes up once and alert `StationIgnoresChargingProfile` fires. At
+`PROFILE_FAILURES_TO_STOP` (default 0 = never) the session also gets a RemoteStopTransaction.

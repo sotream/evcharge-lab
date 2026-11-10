@@ -41,7 +41,7 @@ and drill traces.
 | `service:http_server_requests:p99_*`, `action:ocpp_call_duration:p99_*`, `service:outbox_publish_lag:p99_*` | none directly (per-service views) | the same histograms, grouped by `service` or `action` |
 | `slo:driver_api_error_ratio:rate{5m,30m,1h,6h}` | Driver API 99.9% availability | see SLIs |
 | `slo:gateway_error_ratio:rate{5m,30m,1h,6h}`, `slo:gateway_upgrade_reject_ratio:rate{5m,1h}` | Station gateway 99.95% availability | see SLIs |
-| `slo:site_cap_utilisation:max` | Smart charging, the cap is never exceeded | `max(sim_site_drawn_watts / sim_site_cap_watts)` |
+| `slo:site_cap_utilisation:max` | Smart charging, the cap is never exceeded | `max(sum by (site_id) (gateway_site_drawn_watts) / max by (site_id) (gateway_site_cap_watts))`, measured from station meter values; `slo:site_cap_utilisation_sim:max` keeps the simulator ratio for drills |
 | `group:kafka_consumer_lag:sum` | none directly | `sum by (group) (kafka_consumer_lag)` |
 
 ### SLI choices
@@ -79,9 +79,10 @@ sends no CALLERRORs at all. That case is covered by the 60 s reconnect objective
 upgrade reject ratio is recorded as a supplementary series (`slo:gateway_upgrade_reject_ratio`) and
 charted, but does not alert.
 
-The simulator's own `sim_*` metrics are used only for the site cap. The simulator is the only
-component that knows the power physically drawn per site, which is why the cap alert is driven by
-`sim_site_drawn_watts / sim_site_cap_watts` and why the allocation guard counters are separate alerts.
+The cap alert was first driven by the simulator's `sim_site_drawn_watts / sim_site_cap_watts`, because the simulator knew the
+power physically drawn. Since 2026-11-10 it uses the gateways' `gateway_site_drawn_watts` and `gateway_site_cap_watts`, measured
+from the stations' own meter values (ADR 0006 amendment); the simulator ratio is kept as `slo:site_cap_utilisation_sim:max`.
+The allocation guard counters stay separate alerts.
 
 ### Alerts (`slo-alerts.yml`)
 
@@ -99,6 +100,8 @@ section of `docs/runbook.md`.
 | `OutboxPublishLagHigh` | outbox lag p99 > 5 s for 5m | warning |
 | `OutboxPendingGrowing` | `outbox_pending > 100` and rising over 10m | warning |
 | `DlqMessages` | `increase(kafka_consumer_messages_total{outcome="dlq"}[10m]) > 0` | warning |
+| `StationIgnoresChargingProfile` | `increase(sessions_profile_noncompliant_total[10m]) > 0` | warning |
+| `ServiceDown` | `up == 0` for 1m (any scrape target) | critical |
 | `TelemetryDeadLettered` | `increase(telemetry_dead_lettered_total[10m]) > 0` | warning |
 | `KafkaConsumerLagHigh` | application `kafka_consumer_lag` > 10,000 per group for 5m | warning |
 | `KafkaExporterConsumerLagHigh` | `kafka_consumergroup_lag` from kafka-exporter > 10,000 per group for 5m | warning |
@@ -132,15 +135,13 @@ twice for `postgres` (29187, label `db=oltp`) and `postgres-telemetry` (29188, l
 and `oliver006/redis_exporter:v1.97.0` (29121). They feed the kafka-and-infra dashboard and the
 exporter lag alert.
 
-### No Alertmanager
+### Alertmanager (amendment 2026-11-10; this section said "No Alertmanager")
 
-Alerts are evaluated by Prometheus and are visible in its UI (`localhost:29090/alerts`) and as
-the `ALERTS` series, which Grafana can chart. There is no Alertmanager, no routing tree and no paging
-integration. This is a lab running on one laptop with no on-call. A pager target would be an empty
-integration, and silences, grouping and inhibition would have nothing to act on. Paging is a non-goal
-of this lab (ADR 0000 lists no on-call requirement). Adding Alertmanager later needs only an
-`alerting:` block in `prometheus.yml`: the `severity` labels are already the routing key, and the
-`runbook` annotations are already what a notification template would link to.
+Prometheus now has an `alerting:` block pointing at Alertmanager (`prom/alertmanager:v0.34.1`, host port **29094**, config
+`infra/alertmanager/alertmanager.yml`). One route groups by `alertname` and `severity` into the receiver `lab-log`, which
+has no delivery configuration: the lab still has no on-call, so nothing is paged, but alerts are grouped and visible at
+`localhost:29094`. Commented Slack and PagerDuty examples are in the file; `make prom-check` runs `amtool check-config`.
+Paging stays a non-goal of the lab; the `severity` label is the routing key and the `runbook` annotation the link.
 
 ## Alternatives considered
 

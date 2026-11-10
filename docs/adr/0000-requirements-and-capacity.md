@@ -7,7 +7,7 @@
 
 Every later ADR picks technologies and topologies. Those choices are only defensible against explicit numbers. This ADR fixes the load model, data volumes and SLOs for the whole platform. Every figure carries a label:
 
-- `[assumption]`: an input chosen for this lab, plausible for a mid-sized German charge point operator (CPO), not taken from a real company;
+- `[assumption]`: an input chosen for this lab, sized for a large CPMS platform serving several German CPOs (50,000 stations is more than any single German CPO runs; verify the national total before quoting it), not taken from a real company;
 - `[derived]`: calculated from assumptions, with the formula shown;
 - `[measured]`: filled in later from `docs/load-output/` or `docs/drill-output/`; never typed by hand.
 
@@ -20,7 +20,7 @@ Every later ADR picks technologies and topologies. Those choices are only defens
 | Stations per site | 10 avg, 40 max → 5,000 sites | [assumption] |
 | Power mix | 80% AC 11/22 kW, 20% DC 50-150 kW | [assumption] |
 | Connector utilisation | 10% average, 40% peak (evening) | [assumption] |
-| Session length | 45 min average (2,700 s) | [assumption] |
+| Session length | 45 min average (2,700 s); conservative: AC sessions typically last 2–4 h, so this overstates the start rate about 3×; kept as headroom | [assumption] |
 | Registered drivers / daily active | 2,000,000 / 200,000 | [assumption] |
 | Station offline window (buffers locally, replays on reconnect) | up to 24 h | [assumption] |
 
@@ -34,7 +34,8 @@ Every later ADR picks technologies and topologies. Those choices are only defens
 | Heartbeat (every 300 s) | 167/s | 167/s | 50,000 / 300 | [derived] |
 | MeterValues (every 30 s per active connector) | 333/s | 1,333/s | concurrent / 30 | [derived] |
 | StatusNotification (~5 per session) | 19/s | 75/s | starts × 5 | [derived] |
-| **Inbound OCPP total** | ~550/s | **~1,600/s, design 2,400/s (×1.5)** | sum | [derived] |
+| CALLRESULT for outbound commands (SetChargingProfile) | | ~900/s | = SetChargingProfile outbound | [derived] |
+| **Inbound OCPP total** | ~550/s | **~2,500/s, design 3,750/s (×1.5)** | sum, including command CALLRESULTs | [derived] |
 | Reconnect storm after a gateway deploy or crash (all stations within 60 s) | | 833 connects/s, ~2,500 msg/s (Boot + 2 Status) | 50,000 / 60 | [derived] |
 | Smart charging recomputations | | ~115/s | starts+stops 30/s + 5,000 sites / 60 s periodic | [derived] |
 | SetChargingProfile outbound | | ~900/s | 115 × ~8 active connectors per busy site | [derived] |
@@ -42,12 +43,14 @@ Every later ADR picks technologies and topologies. Those choices are only defens
 | Driver API writes (reserve, start, stop) | 10 RPS | 50 RPS | [assumption] | [assumption] |
 | Tariff quotes + final price calculations | | ~100/s | quotes + 15 stops/s | [derived] |
 
+Sessions per day (~320,000) against 200,000 daily active drivers implies 1.6 sessions per active driver per day, higher than typical; both inputs are assumptions and the session rate is the conservative one.
+
 ## Data volume
 
 | Data | Volume | Retention | Label |
 |---|---|---|---|
 | Meter values, ~200 B per row | 28.8 M rows/day ≈ 5.8 GB/day | raw 90 days (~520 GB), 1-min rollups 2 years | [derived] |
-| Sessions, ~1 KB per row | ~320 MB/day ≈ 117 GB/year | 10 years (German tax law) | [derived] |
+| Sessions, ~1 KB per row | ~320 MB/day ≈ 117 GB/year | 10 years [assumption; verify: since 2025 BEG IV, accounting vouchers may be 8 years] | [derived] |
 | Billing records and invoices | ~320,000/day | 10 years, append-only | [derived] |
 | OCPP raw message log | ~550 msg/s × ~300 B ≈ 14 GB/day | 14 days | [derived] |
 
@@ -66,13 +69,15 @@ Every later ADR picks technologies and topologies. Those choices are only defens
 | Degradation | if the allocation service is down, gateway applies a static safe share (cap / connectors); charging never stops because the backend is down |
 | Durability | RPO 0 for sessions and billing (synchronous commit); RPO ≤ 5 min for telemetry. **Amended by ADR 0018:** RPO 0 holds on one node (argued, not re-measured) and across node loss only with a synchronous standby; with the lab's asynchronous replica it is missed (281 and 282 acknowledged writes lost in two runs when the replica was unreachable for 3 s before the primary died). |
 
+Per instance with 5 surviving of 6: 750 msg/s [derived: 3,750 / 5].
+
 ## Lab targets (one instance, MacBook Air M1, docker compose)
 
 The full fleet cannot run on one laptop. We measure one instance per service and derive the fleet size.
 
 | Service | Per-instance target | Fleet need | Instances (N+1) | Label |
 |---|---|---|---|---|
-| Station gateway | ≥ 10,000 WebSocket connections, ≥ 2,000 msg/s | 50,000 conns, 2,400 msg/s | 6 | target; derived |
+| Station gateway | ≥ 10,000 WebSocket connections, ≥ 2,000 msg/s | 50,000 conns, 3,750 msg/s | 6 | target; derived |
 | Telemetry ingest | ≥ 2,500 rows/s sustained | 1,333 rows/s peak | 2 | target; derived |
 | Sessions / reservations | ≥ 200 commands/s | 45 starts/s + 50 writes/s | 2 | target; derived |
 | Smart charging (Go) | ≥ 1,000 site allocations/s, p99 < 20 ms | 115/s | 2 | target; derived |

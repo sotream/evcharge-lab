@@ -98,3 +98,41 @@ There is no billing script in `load/k6`, so billing throughput is not measured.
   authorization. It moves to CAPTURE_FAILED so `stepRelease` frees the hold, and `billing.payment-failed` is emitted
   with step `pricing`. Before the November 2026 review it only stopped retrying and the hold stayed on the card.
   Test: "a quote the tariff service rejects for good releases the hold".
+
+## Amendment (November 2026 production-readiness review)
+
+Plan `docs/superpowers/plans/2026-11-10-prod-readiness.md`, Tasks 3, 7, 8, 9, 10 and 12.
+
+- **Energy review (migration `0005_energy_flag`).** `session.completed` carries `energyFlag` from sessions. Any flag other
+  than `ok` (`implausible`, `meter_regressed`, `stale`) keeps the saga in PRICING with `next_attempt_at` NULL and
+  `failure_reason = energy_review:<flag>`, and emits `billing.payment-failed` with step `pricing`. The hold stays on the
+  card until an operator decides. `GET /internal/sagas/parked` lists such sagas, `POST /internal/sagas/:sessionId/resume`
+  (body `{ "acceptEnergy": true }` to confirm the reading) restarts them.
+- **Invoice numbers and VAT (migration `0007_invoice_number_vat`, `VAT_RATE_BP` default 1900, `INVOICE_PREFIX` default
+  `EVC`).** Numbers are `EVC-<year>-NNNNNN`, gapless per calendar year in Europe/Berlin: the `invoice_counters` row of
+  (`invoice`, year) is incremented inside the invoice transaction after the transaction owns the registry row, so the
+  adopt-an-existing-invoice branch takes no number and a rollback returns it. The number is UNIQUE on
+  `invoice_registry` (the partitioned `invoices` cannot hold a global UNIQUE). The sequence is zero-padded to at least
+  six digits and grows wider above 999,999 a year, so order numbers by their numeric suffix, not as text. Tariff prices
+  are gross (B2C price display, PAngV): `vat = round_half_up(gross × rate / (10,000 + rate))`, `net = gross − vat`,
+  enforced by a CHECK. The counter row serialises invoice issuing; at roughly 100–200 invoices/s that is well above the
+  ADR 0000 design peak of 45 stops/s.
+- **Dunning (migration `0006_capture_retry`, `CAPTURE_RETRY_DELAYS_H` default `24,72`, `none` disables it).** A capture
+  declined for a card reason (`DUNNABLE_DECLINE_REASONS` in `domain.ts`) stays CAPTURING and is retried 24 h and 72 h
+  after the first decline. Each round uses a new idempotency key (`capture:<invoiceId>[:rest]:r<round>`; round 0 keeps
+  the original key) and reads the driver's current card once (`capture_token_round`), so a replaced card is used and the
+  timeout retries of a round never send two tokens under one key. Each scheduled round emits a non-final
+  `billing.payment-failed` with step `capture_retry`. Any other decline, or the end of the schedule, takes the old
+  path: CAPTURE_FAILED, one final PaymentFailed, hold released.
+- **Credit notes (migration `0008_credit_notes`).** `POST /internal/invoices/:invoiceId/credit-notes` `{ amountMinor,
+  reason }` with a required `idempotency-key`. One transaction locks the invoice's registry row, refuses credits above
+  what is left of the total (409), takes a gapless `EVC-CN-<year>-NNNNNN` number from `invoice_counters`, splits VAT at
+  the invoice's rate, plans the refund across the invoice's captures (newest first, never more than is left of a
+  capture) and emits `billing.credit-note-issued`. The PSP refunds run afterwards with the key
+  `refund:<creditNoteId>:<pspReference>`; a PSP timeout leaves a refund `pending` and repeating the request finishes it.
+  `credit_notes` is append-only; refund state lives in `credit_note_refunds`. `PaymentProvider` gained `refund()`.
+- **Pricing by metered energy (`TELEMETRY_URL`).** Before quoting, billing fetches the session's 1-minute power series
+  from telemetry-ingest (2 s timeout, any error means no profile) and sends it as `energyProfile`; tariff then splits
+  time-of-use energy by metered energy instead of by time (ADR 0011). Without a profile the quote is time-weighted, as
+  before.
+

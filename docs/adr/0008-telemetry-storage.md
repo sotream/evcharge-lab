@@ -173,3 +173,11 @@ reading every 30 s):
   compressed chunks. The p99 values range from 4.29 ms to 36.59 ms. The per-query figures are in the README metrics table.
 - Compression and query numbers were measured with the background policy jobs paused and run manually (the file's
   `notes`).
+
+## Amendment (2026-11-10): late replayed readings reach the 1-minute rollup
+
+The `power_1m` refresh policy only covers `start_offset` 2 hours back, so a station replaying up to 24 h of buffered readings
+(ADR 0003) wrote raw rows that never entered the rollup. After each durable batch the pipeline reports the time range of rows
+older than `LateAfter` (2 h) to a `LateRefresher`; once a minute it runs `CALL refresh_continuous_aggregate('power_1m', from, to)`
+for the merged range, widened to whole minutes. On error the range is kept for the next tick. No migration and no config key.
+Billing's meter profile (power series, ADR 0011) reads this rollup, so late data now also reaches it.
