@@ -137,6 +137,23 @@ export class AuthService {
     metrics.auth.inc({ op: 'logout', outcome: 'ok' });
   }
 
+  /**
+   * Account deletion. sessions first (409 active_session while charging; blocks the idTag), then billing (payment
+   * data), then the local credentials and refresh tokens. Invoices and sessions stay for the legal retention period.
+   * Every step is idempotent, so a failed call is simply repeated. The 15 min access token expires on its own.
+   */
+  async deleteAccount(driverId: string): Promise<void> {
+    await this.downstream.sessions.delete(`/internal/drivers/${driverId}`, { idempotencyKey: driverId });
+    await this.downstream.billing.delete(`/internal/drivers/${driverId}/payment-data`, { idempotencyKey: driverId });
+    await this.pool.query('DELETE FROM drivers WHERE driver_id = $1', [driverId]); // refresh_tokens cascade
+    metrics.auth.inc({ op: 'delete', outcome: 'ok' });
+  }
+
+  /** The access token outlives the account by up to its TTL (15 min): writes that would recreate data must check the account still exists. */
+  async assertAccountExists(driverId: string): Promise<void> {
+    if (!(await this.pool.query('SELECT 1 FROM drivers WHERE driver_id = $1', [driverId])).rowCount) throw new ProblemError(403, 'account_deleted', 'Account deleted', 'this account was deleted');
+  }
+
   async me(driverId: string): Promise<{ driverId: string; email: string; idTag: string; createdAt: string } | undefined> {
     const { rows } = await this.pool.query<{ email: string; id_tag: string; created_at: Date }>('SELECT email, id_tag, created_at FROM drivers WHERE driver_id = $1', [driverId]);
     const r = rows[0];

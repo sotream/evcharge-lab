@@ -275,3 +275,41 @@ describe('trusted proxy hops', () => {
     }
   });
 });
+
+const del = (token: string, key: string | null = 'del-1') => call(env.url, 'DELETE', '/v1/me', { token, headers: key ? { 'idempotency-key': key } : {} });
+describe('account deletion (DELETE /v1/me)', () => {
+  it('needs an idempotency key, deletes through sessions and billing, then login fails; repeating gives 204', async () => {
+    const u = await signUp(env);
+    expect((await del(u.access, null)).status).toBe(400);
+    env.sessions.handle = (r) => (r.method === 'DELETE' ? { status: 204 } : accept(r));
+    env.billing.handle = (r) => (r.method === 'DELETE' ? { status: 204 } : { status: 404 });
+    expect((await del(u.access)).status).toBe(204);
+    expect(env.sessions.calls.findLast((c) => c.method === 'DELETE')?.path).toBe(`/internal/drivers/${u.driverId}`);
+    expect(env.billing.calls.findLast((c) => c.method === 'DELETE')?.path).toBe(`/internal/drivers/${u.driverId}/payment-data`);
+    expect((await login(env, u.email, u.password)).status).toBe(401);
+    expect((await env.app.pool.query('SELECT 1 FROM refresh_tokens WHERE driver_id = $1', [u.driverId])).rowCount).toBe(0);
+    expect((await del(u.access)).status).toBe(204);
+  });
+  it('is refused with 409 active_session while the driver charges', async () => {
+    const u = await signUp(env);
+    env.sessions.handle = (r) => (r.method === 'DELETE' ? { status: 409, body: { type: 'about:blank', title: 'Active session', status: 409, code: 'active_session' } } : accept(r));
+    const res = await del(u.access);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('active_session');
+    expect((await login(env, u.email, u.password)).status).toBe(200);
+  });
+
+  it('rejects writes that would recreate data while the access token is still valid', async () => {
+    const u = await signUp(env);
+    env.sessions.handle = (r) => (r.method === 'DELETE' ? { status: 204 } : accept(r));
+    env.billing.handle = (r) => (r.method === 'DELETE' ? { status: 204 } : { status: 204 });
+    expect((await del(u.access)).status).toBe(204);
+    const before = env.billing.calls.length;
+    const put = await call(env.url, 'PUT', '/v1/me/payment-method', { token: u.access, headers: { 'idempotency-key': 'pm-1' }, body: { token: 'tok_again' } });
+    expect(put.status).toBe(403);
+    expect(put.body.code).toBe('account_deleted');
+    expect(env.billing.calls.length).toBe(before); // never reached billing
+    expect((await call(env.url, 'POST', '/v1/sessions', { token: u.access, headers: { 'idempotency-key': 'rs-1' }, body: { stationId: 'st-1', connectorId: 1 } })).status).toBe(403);
+    expect((await call(env.url, 'POST', '/v1/reservations', { token: u.access, headers: { 'idempotency-key': 'rv-1' }, body: { stationId: 'st-1', connectorId: 1 } })).status).toBe(403);
+  });
+});
