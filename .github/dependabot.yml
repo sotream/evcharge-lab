@@ -1,4 +1,6 @@
 version: 2
+# Every entry sets commit-message so PR titles are Conventional Commits (build(deps): ..., ci(deps): ...):
+# the title becomes the squash-merge subject on main, and CI checks it (scripts/check-commits.mjs).
 # Minor and patch updates are grouped per ecosystem and get auto-merge (dependabot-auto-merge.yml) once the
 # required check is green. Majors are separate PRs and stay manual; so do GitHub Actions bumps.
 updates:
@@ -7,6 +9,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -19,6 +24,9 @@ updates:
     directory: /packages/contracts-go
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -26,6 +34,9 @@ updates:
     directory: /packages/platform-go
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -33,6 +44,9 @@ updates:
     directory: /scripts/backfill-telemetry
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -40,6 +54,9 @@ updates:
     directory: /services/smart-charging
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -47,6 +64,9 @@ updates:
     directory: /services/tariff
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -54,6 +74,9 @@ updates:
     directory: /services/telemetry-ingest
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -61,11 +84,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
   # One entry per Dockerfile. Node moves by hand (ADR 0009); the Go toolchain image follows go.work.
   - package-ecosystem: docker
     directory: /services/billing
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -76,6 +105,9 @@ updates:
     directory: /services/driver-api
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -86,6 +118,9 @@ updates:
     directory: /services/sessions
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -96,6 +131,9 @@ updates:
     directory: /services/station-gateway
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -106,6 +144,9 @@ updates:
     directory: /simulator
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -116,6 +157,9 @@ updates:
     directory: /services/smart-charging
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -123,6 +167,9 @@ updates:
     directory: /services/tariff
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -130,6 +177,9 @@ updates:
     directory: /services/telemetry-ingest
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -138,6 +188,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     groups:
       minor-and-patch:
         update-types: [minor, patch]

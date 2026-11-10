@@ -1,0 +1,26 @@
+name: commits
+
+# Conventional Commits for the PR title (it becomes the squash-merge subject on main) and for every commit in the PR.
+# Separate from ci.yml so that editing the title re-runs only this check, not make check.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # The script uses only node:child_process; the runner's preinstalled Node is enough.
+      - run: node scripts/check-commits.mjs "$BASE_SHA" "$HEAD_SHA"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
