@@ -11,9 +11,9 @@ export TEST_REDIS_URL ?= redis://localhost:26379
 export TEST_KAFKA_BROKERS ?= localhost:29091,localhost:29092,localhost:29093
 export INTEGRATION ?= 1
 
-.PHONY: certs charts-test commits-test history-test prom-check check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
+.PHONY: i18n-check certs charts-test commits-test history-test prom-check check install contracts lint typecheck build test-unit test-int go-check infra-up infra-down up down topics-sync
 
-check: install contracts topics-sync prom-check history-test commits-test lint build typecheck test-unit charts-test infra-up test-int go-check
+check: install contracts topics-sync i18n-check prom-check history-test commits-test lint build typecheck test-unit charts-test infra-up test-int go-check
 	@echo "✔ make check passed"
 
 install:
@@ -22,6 +22,9 @@ install:
 contracts:
 	pnpm --filter @evcharge/contracts build
 	@git diff --quiet -- packages/contracts/schemas || (echo "generated schemas changed: commit packages/contracts/schemas"; git --no-pager diff --stat -- packages/contracts/schemas; exit 1)
+
+i18n-check:
+	node scripts/check-i18n.mjs
 
 topics-sync:
 	node scripts/check-topics.mjs

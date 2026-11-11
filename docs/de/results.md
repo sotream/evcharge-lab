@@ -1,0 +1,28 @@
+<!-- i18n-source: 5e57084507ab -->
+> 🇩🇪 Deutsche Übersetzung von [`docs/results.md`](../results.md). Maßgeblich ist die englische Fassung. Der generierte Diagrammblock ist hier nicht übernommen; die Diagramme stehen in der englischen Fassung.
+
+# Ergebnisse
+
+Das Lab misst **eine Instanz je Service** auf einer Maschine, wobei sich alle Container eine Docker-VM teilen, und leitet daraus die Flottengröße ab. Die Ziele stammen aus [`load/targets.json`](../../load/targets.json), das aus [ADR 0000](adr/0000-requirements-and-capacity.md) übertragen ist. Jedes Verdikt vergleicht den gemessenen Wert ohne Toleranz mit dem Ziel, mit Ausnahme der Ratenregel aus ADR 0000 für den k6-Durchsatz (innerhalb von 0,1 %, keine verworfene Iteration, kein fehlgeschlagener Request), sodass ein verfehltes Ziel als verfehlt sichtbar bleibt. Die Maschinen sind in der Notiz zum Messaufbau unten benannt.
+
+Die Zahlen in den generierten Blöcken (die Zieltabelle im README, die Diagramme auf dieser Seite, die Drill-Tabelle in [`drills.md`](../drills.md) und die Findings-Tabelle in [`findings.md`](../findings.md)) und in [`metrics.md`](../metrics.md) werden von einem Skript aus den Rohdateien in `docs/load-output/` und `docs/drill-output/` gelesen, als gemessen oder abgeleitet gekennzeichnet, und verfehlte Ziele bleiben als verfehlt sichtbar. Auch die Prosa in [Findings](../findings.md) und [Known Limits](../known-limits.md) zitiert Zahlen; diese wurden während der Entwicklung beobachtet, und jede ist gekennzeichnet als gemessen (mit ihrer Datei), abgeleitet (mit ihrer Formel), beobachtet, aber nicht als Datei gespeichert, oder als Review-Szenario.
+
+## Messaufbau
+
+[ADR 0000](adr/0000-requirements-and-capacity.md) nennt ein MacBook Air M1 als vorgesehene Maschine. Die Rohdateien halten zwei verschiedene Setups fest, die nicht zu einer Reihe vermischt werden:
+
+- **k6-Läufe und Benchmarks der früheren Phasen** (`docs/load-output/k6-*.env.json`): `darwin/arm64`, eine Docker-VM mit 8 CPUs und 8,3 GB Speicher (8.319.705.088 Bytes) und die jeweils laufenden Container. Keine dieser Dateien enthält das Laptop-Modell, daher ist aus dem Repository nicht belegbar, welche Maschine sie aufgenommen hat. `load/run.sh` zeichnet es inzwischen auf (`host.model`, `host.cpus`), aber kein k6-Lauf wurde damit wiederholt.
+- **23 Drill-Läufe** (jeder Drill ab `replica-lag`: `replica-lag`, `kraft-quorum-loss`, der 24-h-`station-offline-replay` von 20261108T190213Z, `consumer-rebalance`, `postgres-failover`, `backup-restore`, `reservation-invariant`): ein Apple M4 Pro (Mac16,8; 12 CPUs, 24 GiB) mit einer Docker-VM mit 8 CPUs und 11,7 GiB (12.526.571.520 Bytes), in jeder `env.json` festgehalten.
+- **14 ältere Drill-Läufe** (`gateway-instance-loss`, `kafka-broker-loss`, `reconnect-storm`, `slow-postgres`, `smart-charging-down` und die ersten zwei `station-offline-replay`-Läufe) haben keine `env.json`; die Maschine ist nicht aufgezeichnet.
+
+Die Ziele stammen aus [`load/targets.json`](../../load/targets.json), das aus ADR 0000 übertragen ist.
+
+## Lesehilfe für die Verdikte
+
+Die Zusammenfassungstabelle steht im [README](../../README.md#targets-at-a-glance); die vollständige Tabelle ist [`metrics.md`](../metrics.md).
+
+Jedes Verdikt vergleicht den gemessenen Wert ohne Toleranz mit dem Ziel, mit Ausnahme der Ratenregel aus [ADR 0000](adr/0000-requirements-and-capacity.md) für den k6-Durchsatz. Das **Station-Gateway erfüllt** seine Ziele für Nachrichtenrate und CALLRESULT-p99 in der neuesten Reihe (`k6-gateway-ws-2000st-1.25hz`: drei Läufe, 2.490 bis 2.498 msg/s in einem 60-s-Steady-Fenster bei allen 2.000 verbundenen Stationen, p99 223 bis 253 ms, kein CALLERROR, kein unbeantworteter CALL; der erste Lauf ist der abgebildete, siehe seine [`NOTE.md`](../load-output/gateway-ws-2000st-1.25hz-repeats-20261109T122949Z/NOTE.md)). Die zwei früheren Läufe (1.000 und 2.000 Stationen mit 1 msg/s, ein früheres Skript, das das Ziel konstruktionsbedingt nicht erreichen konnte, eine 8,3-GB-Docker-VM und ein früherer Build) verfehlten sie und bleiben in der Metrik-Tabelle als verfehlt stehen; diese Reihe zeigt nicht, welche der drei Änderungen die Zahlen bewegt hat (siehe [Known Limits](../known-limits.md)). Das Gateway hält außerdem 10.000 WebSocket-Verbindungen. Die Leserate der driver-api (955,59 gegen 1.000) verfehlt das Ziel: 331 Iterationen wurden verworfen. Die k6-Raten von sessions (199,99 gegen 200), smart-charging (999,97 gegen 1.000) und tariff (1.999,97 gegen 2.000) liegen nur knapp unter ihren Zielen, weil k6 durch die gesamte Laufzeit teilt; diese Läufe haben keine Iteration verworfen und hatten keinen fehlgeschlagenen Request, sie erfüllen ihre Ziele also nach der Ratenregel und sind mit „(rate rule)“ markiert. Die Anmerkungen unter der Tabelle in [`metrics.md`](../metrics.md) erklären jeden dieser Fälle. Auch die nachhaltige Rate von telemetry-ingest bei der angebotenen Zielrate (2.471,23 gegen 2.500) verfehlt das Ziel. Die Closed-Loop-Sättigungswerte in der Metrik-Tabelle (zum Beispiel 10.507,2 Allokationen/s und 14.399,8 Quotes/s) sind Best-Case-Benchmarks, nicht die abgebildeten Verdikte.
+
+## Diagramme
+
+Das Diagramm zeigt jeden gemessenen Wert geteilt durch sein Ziel. Jedes Diagramm ist ein SVG, das von [`scripts/charts/`](../../scripts/charts/README.md) (`node scripts/charts/build.mjs`) aus den Rohdateien erzeugt wird, im hellen und im dunklen GitHub-Theme funktioniert und in einer Fußzeile seine Quelldateien und den Messaufbau nennt. Die wichtigsten Diagramme stehen in der [englischen Fassung](../results.md#charts); die Drill-Zeitverläufe stehen in [`drills.md`](../drills.md) und das Diagramm zur Telemetrie-Speicherung in [`metrics.md`](../metrics.md).
