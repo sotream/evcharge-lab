@@ -131,6 +131,7 @@ One instance per service on one machine; the targets come from [`load/targets.js
 | [`docs/runbook.md`](docs/runbook.md) | operating the stack, alerts, failure recipes |
 | [`docs/development.md`](docs/development.md) | repo map, regenerating the charts and tables |
 | [`docs/adr/`](docs/adr/README.md) | one decision per file |
+| [`docs/de/`](docs/de/) | German translations: development, guarantees, results, ADR 0000 and 0001 |
 
 ## CI and license
 

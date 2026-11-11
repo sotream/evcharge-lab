@@ -15,6 +15,7 @@ docs/
   load-output/         raw k6 summaries (+ .env.json setup records) and tool outputs: the source of every measured number
   drill-output/        raw failure-drill output: timeline.jsonl, events.log, result.json per run
   img/                 architecture.svg (hand-made) and the generated charts
+  de/                  German translations of selected pages (checked by scripts/check-i18n.mjs)
 services/
   station-gateway/     NestJS: OCPP 1.6J WebSocket edge, routing, offline replay
   sessions/            NestJS: catalog, reservations, session state machine, allocation rounds
@@ -35,6 +36,7 @@ scripts/
   charts/              generator for the charts, the metrics table, the drills page and the generated README blocks (plain Node, no dependencies)
   backfill-telemetry/  Go: history straight into TimescaleDB, compression and query measurements
   check-topics.mjs     checks that the Kafka topic list in code and in infra/kafka/topics.sh agree
+  check-i18n.mjs       checks that every translation under docs/de/ has an English source and is not stale
 infra/                 compose configuration: HAProxy, Kafka topics, Postgres init, Prometheus, Grafana
 docker-compose.yml     the whole stack
 Makefile               make check, make up, make down
@@ -49,6 +51,13 @@ node --test scripts/charts/     # generator tests; also run by make check
 ```
 
 This rewrites `docs/img/*.svg`, `docs/metrics.md`, `docs/drills.md` and the generated blocks in the README and the pages under `docs/` (stats, targets at a glance, charts, drills table, findings table) from the raw files only. See [`scripts/charts/README.md`](../scripts/charts/README.md).
+
+## Translations
+
+English is the source. A translation lives under `docs/de/` at the same relative path as the original and starts with
+`<!-- i18n-source: <hash> -->`, the hash of the English file without its generated blocks. `node scripts/check-i18n.mjs`
+(part of `make check`) fails when the original changed and prints the new hash to set once the translation is brought up to date.
+Generated pages (`drills.md`, `metrics.md`) are not translated. Numbers, code, commands and metric names stay unchanged.
 
 ## Commit messages
 
