@@ -136,7 +136,7 @@ export class OcppService {
 
         // ADR 0005 "Use": the reservation named by the station, or the reserving driver's own on this connector.
         const used = await c.query<{ reservation_id: number; driver_id: string; site_id: string; station_id: string; connector_id: number }>(
-          `UPDATE reservations SET status = 'Used', ended_at = now()
+          `UPDATE reservations SET status = 'Used', ended_at = date_trunc('milliseconds', clock_timestamp())
             WHERE status IN ('Pending', 'Active') AND starts_at > now() - interval '1 day' AND connector_pk = $1
               AND (reservation_id = $2 OR driver_id = $3)
           RETURNING reservation_id, driver_id, site_id, station_id, connector_id`,

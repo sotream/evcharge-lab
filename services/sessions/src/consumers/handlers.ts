@@ -104,7 +104,7 @@ export class StationEventHandlers {
               return;
             }
             const r = await c.query<{ reservation_id: number; driver_id: string; site_id: string; station_id: string; connector_id: number }>(
-              `UPDATE reservations SET status = 'Rejected', ended_at = now() WHERE reservation_id = $1 AND starts_at = $2 AND status IN ('Pending', 'Active')
+              `UPDATE reservations SET status = 'Rejected', ended_at = date_trunc('milliseconds', clock_timestamp()) WHERE reservation_id = $1 AND starts_at = $2 AND status IN ('Pending', 'Active')
                RETURNING reservation_id, driver_id, site_id, station_id, connector_id`,
               [cmd.reservation_id, cmd.reservation_starts_at],
             );
