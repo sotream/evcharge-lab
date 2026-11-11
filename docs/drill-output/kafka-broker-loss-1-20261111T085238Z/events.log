@@ -1,0 +1,17 @@
+2026-11-11T08:52:39Z probes: {"stations":["st-0001-001","st-0003-001","st-0005-001","st-0007-001","st-0009-001","st-0011-001","st-0013-001","st-0015-001","st-0017-001","st-0019-001"],"file":"/tmp/sim-probes/probe-20261111083925-b95eaa.jsonl"}
+2026-11-11T08:52:39Z sampler pid 65167
+2026-11-11T08:53:39Z PHASE during
+2026-11-11T08:53:39Z RUN docker compose stop kafka-2
+ Container evcharge-kafka-2-1 Stopping 
+ Container evcharge-kafka-2-1 Stopped 
+2026-11-11T08:54:42Z CHECK gateway_ready_during_outage measured=200 eq 200 pass=true
+2026-11-11T08:54:42Z PHASE after
+2026-11-11T08:54:42Z RUN docker compose start kafka-2
+ Container evcharge-kafka-2-1 Starting 
+ Container evcharge-kafka-2-1 Started 
+2026-11-11T08:54:43Z OK producer errors back to zero after 0 s
+2026-11-11T08:54:43Z CHECK producer_recovery_s measured=0 le 60 pass=true
+2026-11-11T08:56:13Z probe readings generated=84 missing_in_timescale=0 (until 2026-11-11T08:55:13Z)
+2026-11-11T08:56:13Z CHECK probe_readings_generated measured=84 ge 1 pass=true
+2026-11-11T08:56:13Z CHECK probe_readings_missing measured=0 eq 0 pass=true
+2026-11-11T08:56:14Z RESULT pass=true -> docs/drill-output/kafka-broker-loss-1-20261111T085238Z/result.json

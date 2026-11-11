@@ -1,0 +1,14 @@
+2026-11-11T08:46:34Z sampler pid 64814
+2026-11-11T08:48:04Z PHASE during
+2026-11-11T08:48:04Z RUN docker compose stop smart-charging
+ Container evcharge-smart-charging-1 Stopping 
+ Container evcharge-smart-charging-1 Stopped 
+2026-11-11T08:50:07Z CHECK fallback_rounds_seen measured=244.6156559006211 ge 1 pass=true
+2026-11-11T08:50:07Z CHECK sessions_still_charging measured=69 ge 1 pass=true
+2026-11-11T08:50:07Z PHASE after
+2026-11-11T08:50:07Z RUN docker compose start smart-charging
+ Container evcharge-smart-charging-1 Starting 
+ Container evcharge-smart-charging-1 Started 
+2026-11-11T08:52:08Z CHECK optimal_rounds_resumed measured=112.36363636363636 ge 1 pass=true
+2026-11-11T08:52:08Z CHECK max_site_utilisation_over_drill measured=0.8059838274932615 le 1 pass=true
+2026-11-11T08:52:08Z RESULT pass=true -> docs/drill-output/smart-charging-down-20261111T084633Z/result.json

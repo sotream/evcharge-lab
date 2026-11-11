@@ -1,0 +1,5 @@
+ops 1141, reserves 920 (acknowledged 105, rejected 705, indeterminate 110, of which found in DB 4), accepted cancels 105, DB rows 143
+informational overlaps (not violations): 0
+RESULT: PASS
+
+This is not a full linearizability check: it proves non-overlap of acknowledged intervals and durability of acknowledged reservations only.

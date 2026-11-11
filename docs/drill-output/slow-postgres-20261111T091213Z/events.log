@@ -1,0 +1,16 @@
+2026-11-11T09:12:14Z probes: {"stations":["st-0001-001","st-0003-001","st-0005-001","st-0007-001","st-0009-001","st-0011-001","st-0013-001","st-0015-001","st-0017-001","st-0019-001"],"file":"/tmp/sim-probes/probe-20261111091134-d59ee5.jsonl"}
+2026-11-11T09:12:14Z sampler pid 82243
+2026-11-11T09:13:14Z PHASE during
+2026-11-11T09:13:14Z RUN docker update --cpus 0.05 12db6cd3ceffda057f17e93721077dc96906bf0aae34aa6969b995dbedf39783
+12db6cd3ceffda057f17e93721077dc96906bf0aae34aa6969b995dbedf39783
+2026-11-11T09:14:44Z CHECK ocpp_callresult_p99_s_during measured=0.01871501047261301 le 0.5 pass=true
+2026-11-11T09:14:44Z PHASE after
+2026-11-11T09:14:45Z RUN docker update --cpus 8 12db6cd3ceffda057f17e93721077dc96906bf0aae34aa6969b995dbedf39783
+12db6cd3ceffda057f17e93721077dc96906bf0aae34aa6969b995dbedf39783
+2026-11-11T09:14:45Z OK consumer lag drained after 0 s
+2026-11-11T09:14:45Z CHECK lag_drained_within_s measured=0 le 300 pass=true
+2026-11-11T09:14:45Z peak consumer lag during slowdown: 0 records (the backlog Kafka held)
+2026-11-11T09:16:15Z CHECK ingest_lag_p99_s_90s_after_recovery measured=0.4971153846153846 le 5 pass=true
+2026-11-11T09:16:46Z probe readings generated=140 missing=0
+2026-11-11T09:16:46Z CHECK probe_readings_missing measured=0 eq 0 pass=true
+2026-11-11T09:16:46Z RESULT pass=true -> docs/drill-output/slow-postgres-20261111T091213Z/result.json

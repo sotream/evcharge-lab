@@ -1,0 +1,19 @@
+2026-11-11T09:26:58Z exclusion constraints on reservation partitions: 5
+2026-11-11T09:26:58Z MUTATION: dropped 5 exclusion constraints; the database no longer prevents overlapping reservations
+2026-11-11T09:26:58Z sampler pid 83377
+2026-11-11T09:26:58Z history generator pid 83383 (12 drivers)
+2026-11-11T09:27:18Z PHASE during
+2026-11-11T09:27:18Z no fault (control)
+2026-11-11T09:27:23Z fault window ended after 5 s
+2026-11-11T09:27:23Z PHASE after
+2026-11-11T09:27:24Z OK first accepted reservation after the fault after 1 s
+2026-11-11T09:28:06Z checker: ops 969, reserves 737 (acknowledged 232, rejected 505, indeterminate 0, of which found in DB 0), accepted cancels 232, DB rows 247
+2026-11-11T09:28:06Z checker: informational overlaps (not violations): 0
+2026-11-11T09:28:06Z checker: RESULT: FAIL, 189 violation(s)
+2026-11-11T09:28:07Z CHECK reserve_ok_before_fault measured=60 ge 1 pass=true
+2026-11-11T09:28:07Z CHECK recovered_within_s measured=1 le 60 pass=true
+2026-11-11T09:28:07Z CHECK constraints_dropped measured=5 ge 1 pass=true
+2026-11-11T09:28:07Z CHECK checker_detects_mutation measured=1 eq 1 pass=true
+2026-11-11T09:28:07Z restoring the exclusion constraints: ending every open reservation, then ADD CONSTRAINT
+2026-11-11T09:28:07Z CHECK constraints_restored measured=5 eq 5 pass=true
+2026-11-11T09:28:08Z RESULT pass=true -> docs/drill-output/reservation-invariant-none-mutated-20261111T092657Z/result.json

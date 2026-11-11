@@ -1,0 +1,27 @@
+[2026-11-11 09:10:39,179] WARN New offset (-52) is lower than earliest offset for topic partition telemetry.meter-values.v1-6. Value will be set to 0 (org.apache.kafka.tools.OffsetsUtils)
+
+GROUP                         TOPIC                     PARTITION  NEW-OFFSET
+telemetry-ingest.meter-values telemetry.meter-values.v1 15         119
+telemetry-ingest.meter-values telemetry.meter-values.v1 14         668
+telemetry-ingest.meter-values telemetry.meter-values.v1 13         172
+telemetry-ingest.meter-values telemetry.meter-values.v1 12         123
+telemetry-ingest.meter-values telemetry.meter-values.v1 11         353
+telemetry-ingest.meter-values telemetry.meter-values.v1 10         37
+telemetry-ingest.meter-values telemetry.meter-values.v1 9          814
+telemetry-ingest.meter-values telemetry.meter-values.v1 8          74
+telemetry-ingest.meter-values telemetry.meter-values.v1 7          192
+telemetry-ingest.meter-values telemetry.meter-values.v1 6          0
+telemetry-ingest.meter-values telemetry.meter-values.v1 5          485
+telemetry-ingest.meter-values telemetry.meter-values.v1 4          217
+telemetry-ingest.meter-values telemetry.meter-values.v1 3          244
+telemetry-ingest.meter-values telemetry.meter-values.v1 2          244
+telemetry-ingest.meter-values telemetry.meter-values.v1 1          449
+telemetry-ingest.meter-values telemetry.meter-values.v1 0          590
+telemetry-ingest.meter-values telemetry.meter-values.v1 23         197
+telemetry-ingest.meter-values telemetry.meter-values.v1 22         212
+telemetry-ingest.meter-values telemetry.meter-values.v1 21         219
+telemetry-ingest.meter-values telemetry.meter-values.v1 20         47
+telemetry-ingest.meter-values telemetry.meter-values.v1 19         96
+telemetry-ingest.meter-values telemetry.meter-values.v1 18         76
+telemetry-ingest.meter-values telemetry.meter-values.v1 17         500
+telemetry-ingest.meter-values telemetry.meter-values.v1 16         554

@@ -1,0 +1,1 @@
+{"drill":"reconnect-storm","startedAt":"20261111T084216Z","pass":true,"checks":[{"check":"fleet_reconnected_within_s","measured":10,"op":"le","threshold":60,"pass":true},{"check":"gateways_ready_after_storm","measured":400,"op":"eq","threshold":400,"pass":true}]}

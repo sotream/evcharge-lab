@@ -1,0 +1,21 @@
+ops 3161, reserves 3068 (acknowledged 92, rejected 2970, indeterminate 6, of which found in DB 0), accepted cancels 86, DB rows 163
+informational overlaps (not violations): 0
+RESULT: FAIL, 16 violation(s)
+  VIOLATION acknowledged reservation lost [3a68eab5-0699-40fc-a626-8223215778f4] reservationId 477 on st-0009-002#2 missing from DB
+  VIOLATION acknowledged reservation lost [acc3f702-a6f7-4f35-9d0d-bcd110d0c2d8] reservationId 486 on st-0009-003#1 missing from DB
+  VIOLATION acknowledged reservation lost [4ccdba1e-16c6-445b-b62d-88c8f8a72ccc] reservationId 487 on st-0009-002#1 missing from DB
+  VIOLATION acknowledged reservation lost [6ca23319-8ec8-402d-b79c-b0fa2e401d0b] reservationId 496 on st-0009-004#1 missing from DB
+  VIOLATION acknowledged reservation lost [15068d39-3272-4ae6-969b-4fe4fcd2e684] reservationId 503 on st-0009-001#2 missing from DB
+  VIOLATION acknowledged reservation lost [e4022c21-8e30-489b-a4fa-fb5b4f4b1fc4] reservationId 505 on st-0009-001#1 missing from DB
+  VIOLATION acknowledged reservation lost [35e8fb39-daea-4327-b421-3aa2ac35a32c] reservationId 509 on st-0009-002#2 missing from DB
+  VIOLATION acknowledged reservation lost [9fd1018d-8f35-4d3c-81e1-030a9f7e8d22] reservationId 512 on st-0009-002#1 missing from DB
+  VIOLATION acknowledged overlap [e00bf1e1-c093-47e6-b94a-09d207f1b8b3, acc3f702-a6f7-4f35-9d0d-bcd110d0c2d8] st-0009-003#1: [1794396457570,1794397357570) vs [1794396460491,1794397360491)
+  VIOLATION acknowledged overlap [34021014-cc75-4f99-801c-ed499dbdd24a, e4022c21-8e30-489b-a4fa-fb5b4f4b1fc4] st-0009-001#1: [1794396458540,1794397358540) vs [1794396461664,1794397361664)
+  VIOLATION acknowledged overlap [a2567ff4-33ed-4ae4-8499-d24d7080237b, 15068d39-3272-4ae6-969b-4fe4fcd2e684] st-0009-001#2: [1794396458976,1794397358976) vs [1794396461495,1794397361495)
+  VIOLATION acknowledged overlap [fed52179-5edf-4c51-a2f0-db9517cf4aed, 6ca23319-8ec8-402d-b79c-b0fa2e401d0b] st-0009-004#1: [1794396457023,1794397357023) vs [1794396461249,1794397361249)
+  VIOLATION acknowledged overlap [e192508d-4a14-404e-8def-58c1d1369205, 3a68eab5-0699-40fc-a626-8223215778f4] st-0009-002#2: [1794396457318,1794397357318) vs [1794396459751,1794396461489)
+  VIOLATION acknowledged overlap [e192508d-4a14-404e-8def-58c1d1369205, 35e8fb39-daea-4327-b421-3aa2ac35a32c] st-0009-002#2: [1794396457318,1794397357318) vs [1794396462282,1794397362282)
+  VIOLATION acknowledged overlap [268f2ec5-1ebc-42bd-8933-928ad8ee333c, 4ccdba1e-16c6-445b-b62d-88c8f8a72ccc] st-0009-002#1: [1794396458153,1794397358153) vs [1794396460571,1794396461351)
+  VIOLATION acknowledged overlap [268f2ec5-1ebc-42bd-8933-928ad8ee333c, 9fd1018d-8f35-4d3c-81e1-030a9f7e8d22] st-0009-002#1: [1794396458153,1794397358153) vs [1794396462450,1794397362450)
+
+This is not a full linearizability check: it proves non-overlap of acknowledged intervals and durability of acknowledged reservations only.

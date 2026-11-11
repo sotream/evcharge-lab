@@ -1,0 +1,16 @@
+
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+2026-11-11 09:45:59.963 UTC [1] LOG:  starting PostgreSQL 18.6 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-11-11 09:45:59.963 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-11-11 09:45:59.963 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-11-11 09:45:59.964 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-11-11 09:45:59.966 UTC [42] LOG:  database system was interrupted; last known up at 2026-11-11 09:44:57 UTC
+2026-11-11 09:46:00.027 UTC [42] LOG:  starting backup recovery with redo LSN 0/1C000F30, checkpoint LSN 0/1C000F88, on timeline ID 1
+2026-11-11 09:46:00.028 UTC [42] LOG:  redo starts at 0/1C000F30
+2026-11-11 09:46:00.029 UTC [42] LOG:  completed backup recovery with redo LSN 0/1C000F30 and end LSN 0/1C00F668
+2026-11-11 09:46:00.029 UTC [42] LOG:  consistent recovery state reached at 0/1C00F668
+2026-11-11 09:46:00.029 UTC [42] LOG:  redo done at 0/1C00F668 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-11-11 09:46:00.048 UTC [40] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-11-11 09:46:00.052 UTC [40] LOG:  checkpoint complete: wrote 11 buffers (0.0%), wrote 2 SLRU buffers; 0 WAL file(s) added, 0 removed, 1 recycled; write=0.002 s, sync=0.002 s, total=0.006 s; sync files=13, longest=0.001 s, average=0.001 s; distance=16380 kB, estimate=16380 kB; lsn=0/1D000028, redo lsn=0/1D000028
+2026-11-11 09:46:00.054 UTC [1] LOG:  database system is ready to accept connections

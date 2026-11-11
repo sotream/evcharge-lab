@@ -1,0 +1,8 @@
+{
+  "sim_connected": "sum(sim_connected_stations)",
+  "upgrades_accepted_per_s": "sum(rate(gateway_upgrades_total{outcome=\"accepted\"}[5s]))",
+  "upgrades_rejected_per_s": "sum(rate(gateway_upgrades_total{outcome!=\"accepted\"}[5s]))",
+  "credential_lookups_per_s": "sum by () (rate(gateway_credential_lookups_total[5s]))",
+  "boot_per_s": "sum(rate(ocpp_messages_total{direction=\"in\",type=\"call\",action=\"BootNotification\"}[5s]))",
+  "callresult_p99_s": "histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket[30s])))"
+}

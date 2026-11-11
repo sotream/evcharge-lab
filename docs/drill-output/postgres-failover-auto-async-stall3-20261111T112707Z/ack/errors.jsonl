@@ -1,0 +1,6 @@
+{"seq":3009,"atMs":1794396462553,"host":"postgres:5432","code":null,"message":"Connection terminated unexpectedly"}
+{"seq":3010,"atMs":1794396462658,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3011,"atMs":1794396462764,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3012,"atMs":1794396462869,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3013,"atMs":1794396462974,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3014,"atMs":1794396463078,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}

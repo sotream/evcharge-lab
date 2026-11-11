@@ -1,0 +1,4 @@
+# 2026-11-11T09:02:06Z describe --status
+(exit 124)
+# 2026-11-11T09:02:27Z describe --replication
+(exit 124)

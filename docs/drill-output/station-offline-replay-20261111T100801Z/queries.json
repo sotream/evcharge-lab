@@ -1,0 +1,10 @@
+{
+  "sim_connected": "sum(sim_connected_stations)",
+  "sim_replay_queue_depth": "sum(sim_replay_queue_depth)",
+  "sim_queue_dropped_total": "sum(sim_queue_dropped_total)",
+  "meter_values_in_per_s": "sum(rate(ocpp_messages_total{direction=\"in\",type=\"call\",action=\"MeterValues\"}[10s]))",
+  "rows_ingested_per_s": "sum(rate(telemetry_rows_ingested_total[10s]))",
+  "dedup_dropped_per_s": "sum(rate(telemetry_dedup_dropped_total[10s]))",
+  "ocpp_replays_per_s": "sum(rate(sessions_ocpp_replays_total[10s]))",
+  "callresult_p99_s": "histogram_quantile(0.99, sum by (le) (rate(ocpp_call_duration_seconds_bucket[30s])))"
+}
