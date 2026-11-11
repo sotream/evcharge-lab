@@ -1,0 +1,42 @@
+{
+  "mode": "auto",
+  "synchronous": true,
+  "stallS": 3,
+  "synchronousStandbyNames": "FIRST 1 (replica_1)",
+  "marksSecondsFromKill": {
+    "stall": -3.3,
+    "kill": 0,
+    "promoteStart": 0.1,
+    "promoted": 0.3,
+    "repointed": 0.4
+  },
+  "rtoDbS": 0.468,
+  "longestWriteGapS": 3.755,
+  "rtoAppS": 9.873,
+  "probe": {
+    "acked": 9140,
+    "ackedBeforeKill": 2685,
+    "lost": 0,
+    "lostFirstSeq": null,
+    "lostLastSeq": null,
+    "lostSpanMs": 0,
+    "lastAckBeforeKillMsBeforeKill": 3287,
+    "failedAttempts": 7,
+    "errorKinds": {
+      "none": 1,
+      "ECONNREFUSED": 1,
+      "ENOTFOUND": 5
+    }
+  },
+  "driversInWindow": {
+    "windowS": 19.9,
+    "ok": 60,
+    "rejected": 86,
+    "error": 185
+  },
+  "stationsAndServices": {
+    "ocppCallErrorsSent": 0,
+    "sessions5xx": 16,
+    "driverApi5xx": 231
+  }
+}

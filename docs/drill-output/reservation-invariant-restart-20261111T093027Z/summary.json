@@ -1,0 +1,10 @@
+{
+  "ops": 1083,
+  "reserveOk": 61,
+  "reserveRejected": 800,
+  "reserveError": 124,
+  "cancelOk": 61,
+  "cancelError": 37,
+  "checkerExitCode": 0,
+  "mutated": 0
+}

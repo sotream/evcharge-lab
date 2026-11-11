@@ -1,0 +1,11 @@
+{
+  "note": "times in seconds, resolution +-1 s (kill/start instants come from events.log)",
+  "killToCoordinatorDropsMemberS": 45.1,
+  "killToSurvivorOwnsAll24S": 45.1,
+  "restartToTwoMembersOwnAll24S": 0.3,
+  "lagPeakRecords": 778,
+  "lagPeakAtSAfterKill": 45.8,
+  "killToLagBelow100S": 50.8,
+  "forcedRedeliveryLagPeakRecords": 5331,
+  "lagBeforeMaxRecords": 4
+}

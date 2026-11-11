@@ -1,0 +1,6 @@
+{"seq":3025,"atMs":1794390718821,"host":"postgres:5432","code":null,"message":"Client has encountered a connection error and is not queryable"}
+{"seq":3026,"atMs":1794390718928,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3027,"atMs":1794390719033,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3028,"atMs":1794390719138,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3029,"atMs":1794390719242,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}
+{"seq":3030,"atMs":1794390719346,"host":"postgres:5432","code":"ENOTFOUND","message":"getaddrinfo ENOTFOUND postgres"}

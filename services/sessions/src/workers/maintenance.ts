@@ -23,7 +23,7 @@ export async function sweepExpiredReservations(pool: Pool, topics: TopicNames): 
            SELECT reservation_id, starts_at FROM reservations
             WHERE status IN ('Pending', 'Active') AND expires_at < now() AND starts_at > now() - interval '1 day'
             ORDER BY expires_at LIMIT ${SWEEP_BATCH} FOR UPDATE SKIP LOCKED)
-         UPDATE reservations r SET status = 'Expired', ended_at = now()
+         UPDATE reservations r SET status = 'Expired', ended_at = date_trunc('milliseconds', clock_timestamp())
            FROM due WHERE r.reservation_id = due.reservation_id AND r.starts_at = due.starts_at
          RETURNING r.reservation_id, r.driver_id, r.site_id, r.station_id, r.connector_id`,
       );
@@ -67,7 +67,7 @@ export async function rejectUnconfirmedReservations(pool: Pool, topics: TopicNam
               AND cmd.expires_at + make_interval(secs => ${RESULT_GRACE_S}) < now()
             ORDER BY cmd.expires_at LIMIT ${SWEEP_BATCH} FOR UPDATE OF r SKIP LOCKED),
          expired AS (UPDATE commands SET outcome = 'Expired', completed_at = now() WHERE command_id IN (SELECT command_id FROM due))
-         UPDATE reservations r SET status = 'Rejected', ended_at = now()
+         UPDATE reservations r SET status = 'Rejected', ended_at = date_trunc('milliseconds', clock_timestamp())
            FROM due WHERE r.reservation_id = due.reservation_id AND r.starts_at = due.starts_at
          RETURNING r.reservation_id, r.driver_id, r.site_id, r.station_id, r.connector_id`,
       );

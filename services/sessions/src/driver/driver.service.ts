@@ -147,7 +147,8 @@ export class DriverService {
         try {
           const ins = await c.query<ReservationRow>(
             `INSERT INTO reservations (reservation_id, driver_id, id_tag, site_id, station_id, connector_id, connector_pk, status, starts_at, expires_at, command_id)
-             VALUES (nextval('reservation_id_seq'), $1, $2, $3, $4, $5, $6, 'Pending', date_trunc('milliseconds', now()), date_trunc('milliseconds', now()) + make_interval(secs => $7), $8)
+             SELECT nextval('reservation_id_seq'), $1, $2, $3, $4, $5, $6, 'Pending', t.ts, t.ts + make_interval(secs => $7), $8
+               FROM (SELECT date_trunc('milliseconds', clock_timestamp()) AS ts) t
              RETURNING reservation_id, driver_id, site_id, station_id, connector_id, status, starts_at, expires_at`,
             [driverId, ctx.id_tag, ctx.site_id, body.stationId, body.connectorId, ctx.connector_pk, RESERVATION_TTL_S, commandId],
           );
@@ -194,8 +195,15 @@ export class DriverService {
   /** DELETE /v1/reservations/:id -> Cancelled + CancelReservation command. Idempotent: a closed one is returned as is. */
   async cancelReservation(driverId: string, reservationId: number): Promise<ReservationDto> {
     const dto = await withTx(this.pool, async (c) => {
+      // Same per-connector lock as createReservation: a reserve waiting on this cancel then takes its starts_at after our
+      // commit, so ended_at <= the next starts_at. Reservation timestamps use clock_timestamp(), not now() (transaction start).
+      await c.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended('reservation:' || connector_pk, 0)) FROM reservations
+          WHERE reservation_id = $1 AND driver_id = $2 AND starts_at > now() - interval '1 day' AND status IN ('Pending', 'Active')`,
+        [reservationId, driverId],
+      );
       const { rows } = await c.query<ReservationRow>(
-        `UPDATE reservations SET status = 'Cancelled', ended_at = now()
+        `UPDATE reservations SET status = 'Cancelled', ended_at = date_trunc('milliseconds', clock_timestamp())
           WHERE reservation_id = $1 AND driver_id = $2 AND starts_at > now() - interval '1 day' AND status IN ('Pending', 'Active')
         RETURNING reservation_id, driver_id, site_id, station_id, connector_id, status, starts_at, expires_at`,
         [reservationId, driverId],

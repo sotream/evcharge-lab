@@ -1,0 +1,7 @@
+ops 1531, reserves 1188 (acknowledged 260, rejected 821, indeterminate 107, of which found in DB 0), accepted cancels 260, DB rows 302
+informational overlaps (not violations): 0
+RESULT: FAIL, 2 violation(s)
+  VIOLATION acknowledged overlap [504d676e-176a-4307-9b88-31355fd1eaed, bb8f7391-4be2-4a92-856c-f414cdf9f8e0] st-0009-001#2: [1794391356460,1794391372297) vs [1794391372295,1794391374489)
+  VIOLATION db-row overlap [reservation:535, reservation:480] st-0009-001#2: [1794391372295,1794391374489) vs [1794391356460,1794391372297)
+
+This is not a full linearizability check: it proves non-overlap of acknowledged intervals and durability of acknowledged reservations only.

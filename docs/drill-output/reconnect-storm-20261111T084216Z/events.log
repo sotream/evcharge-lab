@@ -1,0 +1,8 @@
+2026-11-11T08:42:17Z sampler pid 62773
+2026-11-11T08:42:37Z PHASE during
+2026-11-11T08:42:37Z storm: {"disconnected":200}
+2026-11-11T08:42:47Z OK all 200 stations reconnected after 10 s
+2026-11-11T08:42:48Z CHECK fleet_reconnected_within_s measured=10 le 60 pass=true
+2026-11-11T08:42:48Z PHASE after
+2026-11-11T08:43:18Z CHECK gateways_ready_after_storm measured=400 eq 400 pass=true
+2026-11-11T08:43:18Z RESULT pass=true -> docs/drill-output/reconnect-storm-20261111T084216Z/result.json

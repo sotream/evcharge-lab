@@ -1,0 +1,10 @@
+{
+  "site_drawn_w": "sum(sim_site_drawn_watts)",
+  "site_cap_w": "sum(sim_site_cap_watts)",
+  "max_site_utilisation": "max(sim_site_drawn_watts / on(site) sim_site_cap_watts)",
+  "allocator_failures_per_s": "sum(rate(sessions_allocator_failures_total[10s]))",
+  "rounds_optimal_per_s": "sum(rate(sessions_allocation_rounds_total{strategy=\"optimal\"}[30s]))",
+  "rounds_fallback_per_s": "sum(rate(sessions_allocation_rounds_total{strategy=\"fallback-equal-share\"}[30s]))",
+  "active_sessions": "sum(sim_active_sessions)",
+  "safe_share_applied_total": "sum(gateway_safe_share_applied_total)"
+}

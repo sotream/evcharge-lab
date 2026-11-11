@@ -36,7 +36,7 @@
 <!-- stats:start -->
 | 7 services | 23 ADRs | 12 drill scripts | 19 of 20 drills pass on the latest run | 23 of 23 findings fixed |
 |:---:|:---:|:---:|:---:|:---:|
-| [NestJS and Go, plus a station simulator](#the-system-design-question-each-service-answers) | [one decision per file](docs/adr/README.md) | [failure drills](docs/drills.md) | [12 failed runs kept as evidence](docs/drills.md) | [found by drills, k6 and reviews](docs/findings.md) |
+| [NestJS and Go, plus a station simulator](#the-system-design-question-each-service-answers) | [one decision per file](docs/adr/README.md) | [failure drills](docs/drills.md) | [15 failed runs kept as evidence](docs/drills.md) | [found by drills, k6 and reviews](docs/findings.md) |
 <!-- stats:end -->
 
 ## Architecture

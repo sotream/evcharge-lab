@@ -1,0 +1,1 @@
+{"drill":"gateway-instance-loss","startedAt":"20261111T084348Z","pass":true,"checks":[{"check":"stations_reconnected_within_s","measured":30,"op":"le","threshold":60,"pass":true},{"check":"routes_present_after_loss","measured":200,"op":"ge","threshold":200,"pass":true},{"check":"fleet_connected_after_recovery","measured":200,"op":"ge","threshold":200,"pass":true}]}

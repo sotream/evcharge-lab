@@ -1,0 +1,22 @@
+2026-11-11T09:17:18Z sampler pid 82630
+2026-11-11T09:17:18Z driver probe pid 82634 for 435s
+2026-11-11T09:18:03Z CHECK replica_in_sync_before measured=0 le 2 pass=true
+2026-11-11T09:18:03Z PHASE during
+2026-11-11T09:18:03Z RUN pg_wal_replay_pause on the replica: 
+2026-11-11T09:22:03Z CHECK driver_api_read_p99_s_during measured=0.004990150637311704 le 0.3 pass=true
+2026-11-11T09:22:03Z CHECK ryw_fell_back_to_primary measured=151.55974468085108 ge 1 pass=true
+2026-11-11T09:22:03Z CHECK replica_lag_alert_fired measured=1 ge 1 pass=true
+2026-11-11T09:22:03Z PHASE after
+2026-11-11T09:22:03Z RUN pg_wal_replay_resume on the replica: 
+2026-11-11T09:22:07Z OK replica lag drained after 4 s
+2026-11-11T09:22:07Z CHECK lag_drained_within_s measured=4 le 120 pass=true
+2026-11-11T09:23:07Z waiting for the driver probe to finish
+2026-11-11T09:24:45Z peak replica lag: 237.477858 s
+2026-11-11T09:24:45Z probe summary: {"ryw_checks":33,"ryw_violations":0,"stale_probes":11,"stale_max_s":1.007,"stale_unresolved":0,"probe_errors":733,"reads":72107,"read_errors":0,"read_p99_ms":{"before":3.582709000002069,"during":3.2379579999978887,"after":3.32241600000998}}
+2026-11-11T09:24:45Z CHECK probe_ryw_reads_made measured=33 ge 3 pass=true
+2026-11-11T09:24:45Z CHECK ryw_violations measured=0 eq 0 pass=true
+2026-11-11T09:24:45Z CHECK stale_probes_resolved measured=11 ge 1 pass=true
+2026-11-11T09:24:45Z CHECK stale_unresolved measured=0 eq 0 pass=true
+2026-11-11T09:24:45Z CHECK stale_excess_over_lag_s measured=-249.470858 le 0 pass=true
+2026-11-11T09:24:45Z CHECK client_read_errors measured=0 eq 0 pass=true
+2026-11-11T09:24:46Z RESULT pass=true -> docs/drill-output/replica-lag-20261111T091717Z/result.json
