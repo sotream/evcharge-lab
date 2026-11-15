@@ -91,7 +91,7 @@ services:
 
   # Telemetry: separate instance so its WAL/IO and relaxed durability never touch OLTP (ADR 0008).
   postgres-telemetry:
-    image: timescale/timescaledb:2.31.0-pg18
+    image: timescale/timescaledb:2.32.0-pg18
     environment:
       POSTGRES_USER: evcharge
       POSTGRES_PASSWORD: evcharge
@@ -242,7 +242,7 @@ services:
 
   # Alerts from Prometheus go here (infra/alertmanager/alertmanager.yml; the lab has no external receiver).
   alertmanager:
-    image: prom/alertmanager:v0.34.2
+    image: prom/alertmanager:v0.35.0
     command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
     ports: ["127.0.0.1:29094:9093"]
     volumes: ["./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
@@ -298,7 +298,7 @@ services:
       redis: { condition: service_healthy }
 
   grafana:
-    image: grafana/grafana:13.3.0
+    image: grafana/grafana:13.3.1
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
