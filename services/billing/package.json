@@ -16,9 +16,9 @@
   "dependencies": {
     "@evcharge/contracts": "workspace:*",
     "@evcharge/platform": "workspace:*",
-    "@nestjs/common": "^12.4.0",
-    "@nestjs/core": "^12.4.0",
-    "@nestjs/platform-fastify": "^12.4.0",
+    "@nestjs/common": "^12.5.0",
+    "@nestjs/core": "^12.5.0",
+    "@nestjs/platform-fastify": "^12.5.0",
     "fastify": "^5.12.8",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
@@ -26,7 +26,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@nestjs/testing": "^12.4.0",
+    "@nestjs/testing": "^12.5.0",
     "@platformatic/kafka": "^2.15.0",
     "@types/node": "^26.0.0",
     "@types/pg": "^8.23.1",
