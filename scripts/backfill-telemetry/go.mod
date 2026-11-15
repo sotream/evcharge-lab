@@ -3,7 +3,7 @@ module github.com/sotream/evcharge-lab/scripts/backfill-telemetry
 go 1.27
 
 require (
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/sotream/evcharge-lab/packages/platform-go v0.0.0-00010101000000-000000000000
 	golang.org/x/sync v0.25.0
 )
