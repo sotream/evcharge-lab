@@ -16,9 +16,9 @@
   "dependencies": {
     "@evcharge/contracts": "workspace:*",
     "@evcharge/platform": "workspace:*",
-    "@nestjs/common": "^12.5.0",
-    "@nestjs/core": "^12.5.0",
-    "@nestjs/platform-fastify": "^12.5.0",
+    "@nestjs/common": "^12.5.1",
+    "@nestjs/core": "^12.5.1",
+    "@nestjs/platform-fastify": "^12.5.1",
     "fastify": "^5.12.8",
     "ioredis": "^6.0.0",
     "pg": "^8.23.1",
@@ -30,6 +30,6 @@
     "@types/node": "^26.0.0",
     "@types/pg": "^8.23.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   }
 }

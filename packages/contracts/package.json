@@ -12,5 +12,5 @@
     "test:int": "true"
   },
   "dependencies": { "zod": "^4.6.7" },
-  "devDependencies": { "vitest": "^5.1.0", "typescript": "^7.0.2", "@types/node": "^26.0.0" }
+  "devDependencies": { "vitest": "^5.1.1", "typescript": "^7.0.2", "@types/node": "^26.0.0" }
 }
