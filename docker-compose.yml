@@ -258,7 +258,7 @@ services:
       kafka-1: { condition: service_healthy }
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.20.1
+    image: prometheuscommunity/postgres-exporter:v0.21.1
     environment:
       DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres:5432/evcharge?sslmode=disable
     mem_limit: 64m
@@ -269,7 +269,7 @@ services:
   # Replica exporter: its default replication collector exposes pg_replication_lag_seconds (0 when nothing waits to be
   # replayed). Lag in bytes is measured on the primary by sessions (sessions_replica_lag_bytes).
   postgres-replica-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.20.1
+    image: prometheuscommunity/postgres-exporter:v0.21.1
     environment:
       DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres-replica:5432/evcharge?sslmode=disable
     mem_limit: 64m
@@ -278,7 +278,7 @@ services:
       postgres-replica: { condition: service_healthy }
 
   postgres-telemetry-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.20.1
+    image: prometheuscommunity/postgres-exporter:v0.21.1
     environment:
       DATA_SOURCE_NAME: postgresql://evcharge:evcharge@postgres-telemetry:5432/telemetry?sslmode=disable
     # Per-table collectors walk every hypertable chunk (hundreds) and timed out the scrape; database-level stats suffice.
@@ -310,7 +310,7 @@ services:
 
   # ---------------------------------------------------------------- station edge
   station-lb:
-    image: haproxy:3.4.7-alpine
+    image: haproxy:3.4.8-alpine
     ports: ["${BIND:-127.0.0.1}:28080:8080", "${BIND:-127.0.0.1}:28443:8443", "${BIND:-127.0.0.1}:28099:8404"]
     volumes:
       - ./infra/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
